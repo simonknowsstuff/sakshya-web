@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { createSHA256 } from 'hash-wasm';
 
 export const useFileHash = () => {
   const [hash, setHash] = useState<string | null>(null);
@@ -11,20 +12,33 @@ export const useFileHash = () => {
     setHash(null);
 
     try {
-      // Using the SubtleCrypto API for high-performance hashing:
-      const buffer = await file.arrayBuffer();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      
-      setHash(hashHex);
-      return hashHex;
+      const sha256 = await createSHA256();
+      sha256.init();
+
+      const reader = file.stream().getReader();
+      const totalSize = file.size;
+      let processedSize = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        sha256.update(value);
+
+        processedSize += value.length;
+        setProgress(Math.round((processedSize / totalSize) * 100));
+      }
+
+      const hex = sha256.digest('hex');
+      setHash(hex);
+      return hex;
+
     } catch (error) {
       console.error("Hashing failed:", error);
       throw error;
     } finally {
       setIsHashing(false);
-      setProgress(100);
+      setProgress(100); 
     }
   }, []);
 
