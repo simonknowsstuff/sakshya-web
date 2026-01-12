@@ -8,7 +8,7 @@ interface ChatInterfaceProps {
   setSession: React.Dispatch<React.SetStateAction<VideoSession>>;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }:ChatInterfaceProps) => {
   const [prompt, setPrompt] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,7 +34,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) =>
       const objectUrl = URL.createObjectURL(selectedFile);
 
       // 3. Update Global State
-      setSession(prev => ({
+      setSession((prev:VideoSession) => ({
         ...prev,
         status: 'analyzing', // This triggers the UI switch (we'll build next)
         videoUrl: objectUrl,
