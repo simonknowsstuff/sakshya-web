@@ -1,7 +1,7 @@
 // src/lib/firebase.ts
 import { initializeApp } from 'firebase/app';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
-import { getStorage, connectStorageEmulator } from 'firebase/storage';
+import { getStorage } from 'firebase/storage';
 import { 
   initializeAppCheck, 
   ReCaptchaV3Provider, 
@@ -36,7 +36,6 @@ if (typeof window !== 'undefined') {
     self.FIREBASE_APPCHECK_DEBUG_TOKEN = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN || true;
     console.log("Sakshya AI: Using Manual Debug Token");
     connectFunctionsEmulator(functions, 'localhost', 5001);
-    connectStorageEmulator(storage, 'localhost', 9199);
   }
 
   try {

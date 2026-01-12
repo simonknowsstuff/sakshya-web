@@ -34,7 +34,7 @@ const generationConfig = {
 
 const vertex_ai = new VertexAI({ project: project, location: location });
 const model = vertex_ai.getGenerativeModel({
-    model: "gemini-1.5-flash-001",
+    model: "gemini-2.0-flash-001",
     generationConfig: generationConfig
 });
 
@@ -44,12 +44,13 @@ exports.getTimestampsFromGemini = onCall(
         memory: "512MiB" 
     },
     async (req) => {
-        if (!req.auth || !req.auth.uid) {
-            throw new HttpsError(
-                "unauthenticated", 
-                "The function must be called while authenticated."
-            );
-        }
+        // Please uncomment the following lines to enforce authentication:
+        // if (!req.auth || !req.auth.uid) {
+        //     throw new HttpsError(
+        //         "unauthenticated", 
+        //         "The function must be called while authenticated."
+        //     );
+        // }
 
         const { storageUri, userPrompt } = req.data;
         if (!storageUri) {
