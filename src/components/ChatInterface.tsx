@@ -1,6 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Upload, X, FileVideo, ArrowUp, Loader2 } from 'lucide-react';
+import { Upload, X, FileVideo, ArrowUp, Loader2, AlertCircle } from 'lucide-react';
 import type { VideoSession } from '../types';
+import { httpsCallable } from 'firebase/functions';
+import { ref, uploadBytes } from 'firebase/storage';
+import { functions, storage } from '../lib/firebase'; // Import from your centralized file
 import { useFileHash } from '../hooks/useFileHash';
 
 interface ChatInterfaceProps {
@@ -8,17 +11,18 @@ interface ChatInterfaceProps {
   setSession: React.Dispatch<React.SetStateAction<VideoSession>>;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }:ChatInterfaceProps) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) => {
   const [prompt, setPrompt] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Use our custom hook
   const { isHashing, generateHash } = useFileHash();
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
+      setErrorMsg(null);
     }
   };
 
@@ -27,45 +31,131 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }:Cha
     if (!selectedFile || !prompt) return;
 
     try {
-      // 1. Generate Hash (Client-side evidence locking)
+      setErrorMsg(null);
+
+      // 1. Generate Hash
       const hash = await generateHash(selectedFile);
-      
-      // 2. Create Object URL for immediate preview (Zero-copy feel)
       const objectUrl = URL.createObjectURL(selectedFile);
 
-      // 3. Update Global State
-      setSession((prev:VideoSession) => ({
+      // Update State: UPLOADING
+      setSession(prev => ({
         ...prev,
-        status: 'analyzing', // This triggers the UI switch (we'll build next)
+        status: 'uploading', 
         videoUrl: objectUrl,
         videoName: selectedFile.name,
         hash: hash,
-        events: [] // Reset events
+        events: []
       }));
 
-      // NOTE: Here is where you would normally trigger the Firebase Upload
-      console.log(`Ready to upload. Hash: ${hash}, Prompt: ${prompt}`);
+      // 2. Upload to Firebase Storage
+      // Naming convention: evidence/{hash}.mp4 (Prevents duplicates)
+      const storageRef = ref(storage, `evidence/${hash}.mp4`);
+      
+      console.log("Step 1: Uploading to Storage...");
+      await uploadBytes(storageRef, selectedFile);
+      
+      // 3. Construct gs:// URI
+      // This is the Zero-Copy link for Vertex AI
+      const bucketName = storageRef.bucket; 
+      const gcsUri = `gs://${bucketName}/evidence/${hash}.mp4`;
 
-    } catch (err) {
-      console.error("Error preparing session:", err);
+      // Update State: ANALYZING
+      setSession(prev => ({ ...prev, status: 'analyzing' }));
+      console.log("Step 2: Calling Gemini...");
+
+      // 4. Call Cloud Function
+      const getTimestamps = httpsCallable(functions, 'getTimestampsFromGemini');
+      const response = await getTimestamps({ 
+        storageUri: gcsUri, 
+        userPrompt: prompt 
+      });
+
+      // 5. Handle Results
+      const data = response.data as any; // Type assertion since we know the schema
+      
+      if (data.timestamps) {
+        setSession(prev => ({
+          ...prev,
+          status: 'ready',
+          events: data.timestamps.map((t: any) => ({
+            // Normalize the data for our frontend types
+            timestamp: t.from, // We might need to parse "HH:MM:SS" to seconds later if needed
+            description: t.description || "Event Detected",
+            confidence: 1.0 // Default since Flash doesn't always return confidence
+          }))
+        }));
+      } else {
+        throw new Error("Invalid response format from AI");
+      }
+
+    } catch (err: any) {
+      console.error("Analysis failed:", err);
+      setErrorMsg(err.message || "Failed to analyze video");
+      setSession(prev => ({ ...prev, status: 'idle' }));
     }
   };
 
-  // If the session is already active (video loaded), we will show the Player later.
-  // For now, let's handle the "Empty State" (Upload Screen).
-  if (session.status !== 'idle') {
+  // --- VIEW 1: LOADING / PROCESSING ---
+  if (session.status === 'uploading' || session.status === 'analyzing') {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-400">
-        <Loader2 className="w-10 h-10 animate-spin mb-4 text-blue-500" />
-        <h2 className="text-xl text-gray-200">Analyzing Evidence...</h2>
-        <p className="text-sm mt-2 font-mono text-gray-500">SHA-256: {session.hash || 'Calculating...'}</p>
+      <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-6">
+        <div className="relative">
+          <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full animate-pulse" />
+          <Loader2 className="w-16 h-16 animate-spin text-blue-500 relative z-10" />
+        </div>
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold text-gray-200">
+            {session.status === 'uploading' ? 'Securely Uploading Evidence...' : 'Gemini is Watching...'}
+          </h2>
+          <p className="text-sm mt-2 font-mono text-gray-500">
+            ID: {session.hash ? session.hash.substring(0, 12) + '...' : 'Calculating...'}
+          </p>
+        </div>
       </div>
     );
   }
 
+  // --- VIEW 2: RESULTS (Simple List) ---
+  if (session.status === 'ready') {
+    return (
+      <div className="max-w-4xl mx-auto w-full pt-8 px-4 h-full flex flex-col">
+        <div className="flex justify-between items-end mb-6">
+            <div>
+                <h2 className="text-2xl font-bold text-white">Investigation Results</h2>
+                <p className="text-gray-400 text-sm">Target: "{prompt}"</p>
+            </div>
+            <button 
+                onClick={() => setSession(prev => ({ ...prev, status: 'idle', events: [] }))}
+                className="text-sm text-blue-400 hover:text-blue-300 underline"
+            >
+                New Search
+            </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-3 pb-8">
+            {session.events.length === 0 ? (
+                <div className="text-center py-20 text-gray-500">No matching events found.</div>
+            ) : (
+                session.events.map((event, index) => (
+                    <div key={index} className="bg-[#1e1f20] hover:bg-[#282a2c] p-4 rounded-xl border border-gray-700 transition-colors flex gap-4 items-start group">
+                        <div className="bg-blue-500/10 text-blue-400 px-3 py-1 rounded-md font-mono text-sm font-bold border border-blue-500/20">
+                            {event.timestamp}
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-gray-200 text-sm leading-relaxed">{event.description}</p>
+                        </div>
+                    </div>
+                ))
+            )}
+        </div>
+      </div>
+    );
+  }
+
+  // --- VIEW 3: EMPTY STATE (Upload Form) ---
   return (
     <div className="flex flex-col h-full max-w-3xl mx-auto w-full px-4">
-      {/* 1. Header Area */}
+      {/* Header Area */}
       <div className="flex-1 flex flex-col items-center justify-center min-h-0 space-y-8">
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500/10 mb-4">
@@ -81,11 +171,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }:Cha
         </div>
       </div>
 
-      {/* 2. Input Area (Fixed at bottom) */}
+      {/* Input Area */}
       <div className="flex-none pb-8 pt-4">
+        {errorMsg && (
+            <div className="mb-4 bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg flex items-center gap-2 text-sm">
+                <AlertCircle className="w-4 h-4" />
+                {errorMsg}
+            </div>
+        )}
+
         <form onSubmit={handleSubmit} className="relative bg-[#1e1f20] rounded-2xl border border-gray-700 focus-within:border-gray-600 transition-colors">
           
-          {/* Selected File Preview Badge */}
           {selectedFile && (
             <div className="absolute -top-12 left-0 flex items-center gap-2 bg-[#282a2c] text-sm text-gray-200 px-3 py-2 rounded-lg border border-gray-700 shadow-sm animate-fade-in">
               <FileVideo className="w-4 h-4 text-blue-400" />
