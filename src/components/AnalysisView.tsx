@@ -10,7 +10,8 @@ interface AnalysisViewProps {
 }
 
 const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack }) => {
-  const playerRef = useRef<ReactPlayer>(null);
+  const Player =ReactPlayer as unknown as React.ComponentType<any>;
+  const playerRef = useRef<any>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -38,9 +39,22 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
     }
   }, [session.status, setSession]);
 
+  // In AnalysisView.tsx
+
   const handleSeek = (time: number) => {
     if (playerRef.current) {
-      playerRef.current.seekTo(time);
+      // DEBUG: Let's see what we actually have
+      // console.log("Player Ref is:", playerRef.current); 
+
+      // Scenario A: It's the ReactPlayer instance (Has .seekTo)
+      if (typeof playerRef.current.seekTo === 'function') {
+        playerRef.current.seekTo(time, 'seconds');
+      } 
+      // Scenario B: It's the raw HTML Video element (Has .currentTime)
+      else if (playerRef.current.currentTime !== undefined) {
+        playerRef.current.currentTime = time;
+      }
+      
       setPlaying(true);
     }
   };
@@ -85,14 +99,14 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
       {/* Left Column: Video Player */}
       <div className="flex-1 flex flex-col min-h-0 bg-[#000] rounded-2xl overflow-hidden border border-gray-800 shadow-2xl relative group">
         <div className="flex-1 relative">
-            <ReactPlayer
+            <Player
               ref={playerRef}
               url={session.videoUrl || ''}
               width="100%"
               height="100%"
               playing={playing}
               controls={true}
-              onProgress={({ playedSeconds }) => setCurrentTime(playedSeconds)}
+              onProgress={({ playedSeconds }:any) => setCurrentTime(playedSeconds)}
               onDuration={setDuration}
               style={{ position: 'absolute', top: 0, left: 0 }}
             />

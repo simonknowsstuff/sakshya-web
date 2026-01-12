@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Menu, Plus } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
+import AnalysisView from './components/AnalysisView';
 import type { VideoSession } from './types';
 
 function App() {
@@ -15,6 +16,15 @@ function App() {
     status: 'idle',
     events: []
   });
+
+  const backToChat = () => {
+    setCurrentSession(prev => ({
+      ...prev,
+      status: 'idle',      // <--- This is the magic switch
+      videoUrl: null,      // Optional: clear video if you want a fresh start
+      events: []           // Optional: clear old results
+    }));
+  };
 
   return (
     // 1. Main Container: Full screen, Dark Gemini-like background
@@ -53,10 +63,11 @@ function App() {
           />
         )}
 
-        <ChatInterface 
-          session={currentSession} 
-          setSession={setCurrentSession} 
-        />
+        {currentSession.status==='idle'?(
+          <ChatInterface session={currentSession} setSession={setCurrentSession}/>
+        ):(
+          <AnalysisView session={currentSession} setSession={setCurrentSession} onBack={backToChat}/>
+        )}
       </main>
     </div>
   );
