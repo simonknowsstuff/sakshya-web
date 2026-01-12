@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",
+    "all": "^0.0.0",
     "clsx": "^2.1.1",
     "firebase": "^12.7.0",
     "hash-wasm": "^4.12.0",

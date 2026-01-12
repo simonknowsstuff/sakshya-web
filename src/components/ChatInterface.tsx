@@ -95,61 +95,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) =>
     }
   };
 
-  // --- VIEW 1: LOADING / PROCESSING ---
-  if (session.status === 'uploading' || session.status === 'analyzing') {
-    return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-6">
-        <div className="relative">
-          <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full animate-pulse" />
-          <Loader2 className="w-16 h-16 animate-spin text-blue-500 relative z-10" />
-        </div>
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold text-gray-200">
-            {session.status === 'uploading' ? 'Securely Uploading Evidence...' : 'Gemini is Watching...'}
-          </h2>
-          <p className="text-sm mt-2 font-mono text-gray-500">
-            ID: {session.hash ? session.hash.substring(0, 12) + '...' : 'Calculating...'}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  // --- VIEW 2: RESULTS (Simple List) ---
-  if (session.status === 'ready') {
-    return (
-      <div className="max-w-4xl mx-auto w-full pt-8 px-4 h-full flex flex-col">
-        <div className="flex justify-between items-end mb-6">
-            <div>
-                <h2 className="text-2xl font-bold text-white">Investigation Results</h2>
-                <p className="text-gray-400 text-sm">Target: "{prompt}"</p>
-            </div>
-            <button 
-                onClick={() => setSession(prev => ({ ...prev, status: 'idle', events: [] }))}
-                className="text-sm text-blue-400 hover:text-blue-300 underline"
-            >
-                New Search
-            </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto space-y-3 pb-8">
-            {session.events.length === 0 ? (
-                <div className="text-center py-20 text-gray-500">No matching events found.</div>
-            ) : (
-                session.events.map((event, index) => (
-                    <div key={index} className="bg-[#1e1f20] hover:bg-[#282a2c] p-4 rounded-xl border border-gray-700 transition-colors flex gap-4 items-start group">
-                        <div className="bg-blue-500/10 text-blue-400 px-3 py-1 rounded-md font-mono text-sm font-bold border border-blue-500/20">
-                            {event.timestamp}
-                        </div>
-                        <div className="flex-1">
-                            <p className="text-gray-200 text-sm leading-relaxed">{event.description}</p>
-                        </div>
-                    </div>
-                ))
-            )}
-        </div>
-      </div>
-    );
+  // If the session is already active (video loaded), we will show the Player later.
+  // For now, let's handle the "Empty State" (Upload Screen).
+  // MOVED: The Loading state and Player view are now handled by AnalysisView.tsx in App.tsx
+  if (session.status !== 'idle') {
+    return null; // Should be handled by parent
   }
 
   // --- VIEW 3: EMPTY STATE (Upload Form) ---
