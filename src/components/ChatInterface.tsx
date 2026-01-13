@@ -96,8 +96,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
       
       if (data.timestamps) {
         const formattedEvents = data.timestamps.map((t: any) => ({
-          timestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
-          description: t.description || "Event Detected",
+          fromTimestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
+          toTimestamp: parseTimestampToSeconds(t.end || t.to),
+          summary: t.summary || "Event Detected",
           confidence: 1.0 
         }));
 
@@ -162,7 +163,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
               <span className="truncate max-w-[200px]">{selectedFile.name}</span>
               <button 
                 type="button" 
-                onClick={() => setSelectedFile(null)}
+                onClick={() => {
+                  setSelectedFile(null);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
                 className="hover:text-red-400 ml-1"
               >
                 <X className="w-4 h-4" />

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Loader2, AlertCircle, CheckCircle2, Clock, Play, Pause, Maximize, Volume2, VolumeX } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, Clock, Play, Pause, Maximize, Volume2, VolumeX, FileText } from 'lucide-react';
 import type { VideoSession } from '../types';
 
 interface AnalysisViewProps {
@@ -19,7 +19,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [showControls, setShowControls] = useState(true);
-  const [isDragging, setIsDragging] = useState(false); // <--- New State for Dragging
+  const [isDragging, setIsDragging] = useState(false);
 
   // --- CONTROLS LOGIC ---
 
@@ -47,8 +47,6 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
   };
 
   const handleTimeUpdate = () => {
-    // Only update state from video if we aren't currently dragging
-    // (This prevents the bar from "fighting" your mouse while you drag)
     if (videoRef.current && !isDragging) {
       setCurrentTime(videoRef.current.currentTime);
     }
@@ -66,8 +64,6 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
   };
 
   // --- DRAG / SCRUB HANDLERS ---
-  
-  // 1. Calculate time based on mouse X position
   const calculateTimeFromMouseEvent = (e: MouseEvent | React.MouseEvent) => {
     if (progressBarRef.current && duration > 0) {
         const rect = progressBarRef.current.getBoundingClientRect();
@@ -79,14 +75,12 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
     return 0;
   };
 
-  // 2. Start Dragging
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
     const newTime = calculateTimeFromMouseEvent(e);
-    handleSeek(newTime); // Jump immediately to click
+    handleSeek(newTime); 
   };
 
-  // 3. Handle Dragging (Global Listener)
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDragging) {
@@ -97,14 +91,12 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
 
     const handleMouseUp = () => {
       setIsDragging(false);
-      // Optional: If you want it to resume playing after drag
       if (isPlaying && videoRef.current) {
          videoRef.current.play();
       }
     };
 
     if (isDragging) {
-      // Attach to window so you can drag outside the bar
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     }
@@ -113,8 +105,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging, duration, isPlaying]); // Dependencies
-
+  }, [isDragging, duration, isPlaying]);
 
   const formatTime = (seconds: number) => {
     if (!Number.isFinite(seconds)) return "0:00";
@@ -123,13 +114,12 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Auto-hide controls
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
     const resetTimer = () => {
       setShowControls(true);
       clearTimeout(timeout);
-      if (isPlaying && !isDragging) { // Don't hide while dragging
+      if (isPlaying && !isDragging) { 
         timeout = setTimeout(() => setShowControls(false), 3000);
       }
     };
@@ -140,6 +130,8 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
     };
   }, [isPlaying, isDragging]);
 
+
+  // --- LOADING STATES ---
 
   if (session.status === 'uploading') {
     return (
@@ -183,13 +175,13 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
     );
   }
 
+  // --- MAIN RENDER ---
+
   return (
     <div className="h-full flex flex-col lg:flex-row gap-6 p-6 max-w-[1600px] mx-auto overflow-hidden">
       
       {/* --- Left Column: CUSTOM VIDEO PLAYER --- */}
       <div ref={containerRef} className="flex-1 flex flex-col min-h-0 bg-black rounded-2xl overflow-hidden border border-gray-800 shadow-2xl relative group">
-        
-        {/* Video Element */}
         <div 
             className="w-full h-full relative bg-black flex items-center justify-center cursor-pointer"
             onClick={togglePlay}
@@ -213,57 +205,54 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
             )}
         </div>
 
-        {/* --- CUSTOM CONTROL BAR --- */}
+        {/* Control Bar */}
         <div className={`
             absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent px-4 pb-4 pt-12 transition-opacity duration-300
             ${showControls ? 'opacity-100' : 'opacity-0'}
         `}>
-            
-            {/* Draggable Progress Bar Container */}
+            {/* Progress Bar */}
             <div 
                 ref={progressBarRef}
                 className="relative w-full h-1.5 bg-gray-600/50 hover:h-2.5 transition-all cursor-pointer rounded-full mb-3 group/bar touch-none"
                 onMouseDown={handleMouseDown}
             >
-                {/* Red Progress Fill */}
                 <div 
                     className="absolute top-0 left-0 h-full bg-red-600 rounded-full z-10 pointer-events-none"
                     style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
                 >
-                    {/* Draggable Handle Dot (Only visible on hover or dragging) */}
                     <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-red-600 rounded-full shadow opacity-0 group-hover/bar:opacity-100 transition-opacity scale-150" />
                 </div>
-
-                {/* Event Markers */}
+                {/* Event Markers on Timeline */}
                 {session.events.map((event, idx) => {
-                    const position = (event.fromTimestamp / (duration || 1)) * 100;
+                    const startPct = (event.fromTimestamp / (duration || 1)) * 100;
+                    const endPct = (event.toTimestamp / (duration || 1)) * 100;
+                    const widthPct = Math.max(0.5, endPct - startPct)
                     return (
                         <div
                             key={idx}
-                            className="absolute top-0 w-1 h-full bg-blue-400 z-20 hover:scale-y-150 hover:w-1.5 transition-all"
-                            style={{ left: `${position}%` }}
-                            title={`${formatTime(event.fromTimestamp)}: ${event.description}`}
-                        />
+                            className="absolute top-0 h-full bg-blue-400/80 z-20 hover:bg-blue-300 transition-colors"
+                            style={{ 
+                                left: `${startPct}%`,
+                                width: `${widthPct}%` 
+                            }}
+                            title={`${formatTime(event.fromTimestamp)} - ${formatTime(event.toTimestamp)}: ${event.summary}`}/>
                     );
                 })}
             </div>
 
-            {/* Buttons Row */}
+            {/* Controls */}
             <div className="flex items-center justify-between text-white select-none">
                 <div className="flex items-center gap-4">
                     <button onClick={togglePlay} className="hover:text-blue-400 transition-colors p-1">
                         {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
                     </button>
-                    
                     <button onClick={toggleMute} className="hover:text-blue-400 transition-colors p-1">
                         {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
                     </button>
-
                     <div className="text-xs font-mono text-gray-300">
                         {formatTime(currentTime)} / {formatTime(duration)}
                     </div>
                 </div>
-
                 <div className="flex items-center gap-3">
                     <span className="text-xs font-medium text-gray-400 hidden sm:block">
                         {session.videoName}
@@ -279,7 +268,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
       {/* --- Right Column: Analysis Results --- */}
       <div className="w-full lg:w-96 flex flex-col gap-4 min-h-0">
         
-        {/* Stats */}
+        {/* 1. Detection Stats */}
         <div className="bg-[#1e1f20] border border-gray-700 p-4 rounded-xl shrink-0">
             <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">Detection Summary</h3>
             <div className="grid grid-cols-2 gap-3">
@@ -290,15 +279,16 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
                 <div className="bg-[#282a2c] p-3 rounded-lg border border-gray-800">
                     <div className="text-2xl font-bold text-blue-400">
                         {session.events.length > 0 
-                         ? (session.events.reduce((acc, curr) => acc + curr.confidence, 0) / session.events.length * 100).toFixed(0) 
-                         : 0}%
+                          ? (session.events.reduce((acc, curr) => acc + curr.confidence, 0) / session.events.length * 100).toFixed(0) 
+                          : 0}%
                     </div>
                     <div className="text-xs text-gray-500">Avg. Confidence</div>
                 </div>
             </div>
         </div>
 
-        {/* List */}
+        
+        {/* 3. Timeline List */}
         <div className="flex-1 bg-[#1e1f20] border border-gray-700 rounded-xl overflow-hidden flex flex-col min-h-0">
           <div className="p-4 border-b border-gray-700 flex items-center justify-between bg-[#282a2c]">
             <h3 className="font-semibold text-gray-200 flex items-center gap-2">
@@ -308,40 +298,46 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
           </div>
 
           <div className="overflow-y-auto flex-1 p-2 space-y-2 custom-scrollbar">
-            {session.events.map((event, idx) => (
-              <button
-                key={idx}
-                onClick={() => {
-                  handleSeek(event.fromTimestamp);
-                  if(!isPlaying) {
-                    videoRef.current?.play();
-                    setIsPlaying(true);
-                  }
-                }}
-                className={`w-full text-left p-3 rounded-lg border transition-all duration-200 group
-                  ${Math.abs(currentTime - event.fromTimestamp) < 2 
-                    ? 'bg-blue-500/10 border-blue-500/50 hover:bg-blue-500/20' 
-                    : 'bg-[#282a2c]/50 border-gray-800 hover:bg-[#282a2c] hover:border-gray-600'}
-                `}
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <div className="flex items-center gap-2 text-blue-400 font-mono text-sm font-medium bg-blue-500/10 px-2 py-0.5 rounded">
-                    <Clock className="w-3 h-3" />
-                    {formatTime(event.fromTimestamp)}
-                  </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full border
-                    ${event.confidence > 0.9 
-                      ? 'bg-green-500/10 text-green-400 border-green-500/20' 
-                      : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'}
-                  `}>
-                    {Math.round(event.confidence * 100)}%
-                  </span>
-                </div>
-                <p className="text-sm text-gray-300 group-hover:text-white transition-colors line-clamp-2">
-                  {event.description}
-                </p>
-              </button>
-            ))}
+            {session.events.map((event, idx) => {
+                // Check if current video time is WITHIN this event's range
+                const isActive = currentTime >= event.fromTimestamp && currentTime <= event.toTimestamp;
+
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      handleSeek(event.fromTimestamp); // Seek to start of event
+                      if(!isPlaying) {
+                        videoRef.current?.play();
+                        setIsPlaying(true);
+                      }
+                    }}
+                    className={`w-full text-left p-3 rounded-lg border transition-all duration-200 group
+                      ${isActive
+                        ? 'bg-blue-500/10 border-blue-500/50 hover:bg-blue-500/20' 
+                        : 'bg-[#282a2c]/50 border-gray-800 hover:bg-[#282a2c] hover:border-gray-600'}
+                    `}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="flex items-center gap-2 text-blue-400 font-mono text-sm font-medium bg-blue-500/10 px-2 py-0.5 rounded">
+                        <Clock className="w-3 h-3" />
+                        {formatTime(event.fromTimestamp)} - {formatTime(event.toTimestamp)}
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full border
+                        ${event.confidence > 0.9 
+                          ? 'bg-green-500/10 text-green-400 border-green-500/20' 
+                          : 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'}
+                      `}>
+                        {Math.round(event.confidence * 100)}%
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-300 group-hover:text-white transition-colors line-clamp-2">
+                      {event.summary}
+                    </p>
+                  </button>
+                );
+            })}
+          
           </div>
         </div>
 

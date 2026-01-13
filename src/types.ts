@@ -10,6 +10,6 @@ export interface VideoSession {
 export interface TimelineEvent {
     fromTimestamp: number;
     toTimestamp: number;
-    description: string;
+    summary: string;
     confidence: number;
 }
