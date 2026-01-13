@@ -2,6 +2,7 @@
 import { initializeApp } from 'firebase/app';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { getStorage } from 'firebase/storage';
+import { getAuth } from "firebase/auth";
 import { 
   initializeAppCheck, 
   ReCaptchaV3Provider, 
@@ -25,6 +26,7 @@ const app = initializeApp(firebaseConfig);
 // 3. Initialize Services
 export const functions = getFunctions(app);
 export const storage = getStorage(app);
+export const auth = getAuth(app);
 
 // 4. Initialize App Check (The Security Layer)
 // We only initialize this in the browser, not during build/SSR
