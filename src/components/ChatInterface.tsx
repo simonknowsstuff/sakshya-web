@@ -26,6 +26,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) =>
     }
   };
 
+  const parseTimestampToSeconds = (timeStr: string | number): number => {
+    if (typeof timeStr === 'number') return timeStr;
+    if (!timeStr) return 0;
+    
+    // Handle "MM:SS" or "HH:MM:SS"
+    const parts = timeStr.toString().split(':').map(Number);
+    if (parts.some(isNaN)) return 0; // Safety check
+
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]; // HH:MM:SS
+    if (parts.length === 2) return parts[0] * 60 + parts[1]; // MM:SS
+    return parts[0]; // Just seconds
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile || !prompt) return;
@@ -79,7 +92,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) =>
           status: 'ready',
           events: data.timestamps.map((t: any) => ({
             // Normalize the data for our frontend types
-            timestamp: t.from, // We might need to parse "HH:MM:SS" to seconds later if needed
+            timestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
             description: t.description || "Event Detected",
             confidence: 1.0 // Default since Flash doesn't always return confidence
           }))

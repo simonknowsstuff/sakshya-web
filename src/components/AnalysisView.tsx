@@ -1,7 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
-import ReactPlayer from 'react-player';
-import { Loader2, Play, Pause, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
-import type { VideoSession, TimelineEvent } from '../types';
+import { Loader2, AlertCircle, CheckCircle2, Clock, Play, Pause, Maximize, Volume2, VolumeX } from 'lucide-react';
+import type { VideoSession } from '../types';
 
 interface AnalysisViewProps {
   session: VideoSession;
@@ -10,60 +9,137 @@ interface AnalysisViewProps {
 }
 
 const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack }) => {
-  const Player =ReactPlayer as unknown as React.ComponentType<any>;
-  const playerRef = useRef<any>(null);
-  const [playing, setPlaying] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const progressBarRef = useRef<HTMLDivElement>(null);
+  
+  // Player State
+  const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [isDragging, setIsDragging] = useState(false); // <--- New State for Dragging
 
-  // Mock processing effect
-  useEffect(() => {
-    if (session.status === 'analyzing') {
-      const timer = setTimeout(() => {
-        // Mock results
-        const mockEvents: TimelineEvent[] = [
-          { timestamp: 5, description: "Red car enters the frame from the left", confidence: 0.95 },
-          { timestamp: 12, description: "Person detected walking near the entrance", confidence: 0.88 },
-          { timestamp: 25, description: "Suspicious object left unattended", confidence: 0.75 },
-          { timestamp: 40, description: "Vehicle departs the scene", confidence: 0.92 }
-        ];
+  // --- CONTROLS LOGIC ---
 
-        setSession(prev => ({
-          ...prev,
-          status: 'ready',
-          events: mockEvents
-        }));
-      }, 3000); // 3 seconds mock delay
-
-      return () => clearTimeout(timer);
-    }
-  }, [session.status, setSession]);
-
-  // In AnalysisView.tsx
-
-  const handleSeek = (time: number) => {
-    if (playerRef.current) {
-      // DEBUG: Let's see what we actually have
-      // console.log("Player Ref is:", playerRef.current); 
-
-      // Scenario A: It's the ReactPlayer instance (Has .seekTo)
-      if (typeof playerRef.current.seekTo === 'function') {
-        playerRef.current.seekTo(time, 'seconds');
-      } 
-      // Scenario B: It's the raw HTML Video element (Has .currentTime)
-      else if (playerRef.current.currentTime !== undefined) {
-        playerRef.current.currentTime = time;
-      }
-      
-      setPlaying(true);
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) videoRef.current.pause();
+      else videoRef.current.play();
+      setIsPlaying(!isPlaying);
     }
   };
 
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  };
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    // Only update state from video if we aren't currently dragging
+    // (This prevents the bar from "fighting" your mouse while you drag)
+    if (videoRef.current && !isDragging) {
+      setCurrentTime(videoRef.current.currentTime);
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) setDuration(videoRef.current.duration);
+  };
+
+  const handleSeek = (time: number) => {
+    if (videoRef.current && Number.isFinite(time)) {
+      videoRef.current.currentTime = time;
+      setCurrentTime(time);
+    }
+  };
+
+  // --- DRAG / SCRUB HANDLERS ---
+  
+  // 1. Calculate time based on mouse X position
+  const calculateTimeFromMouseEvent = (e: MouseEvent | React.MouseEvent) => {
+    if (progressBarRef.current && duration > 0) {
+        const rect = progressBarRef.current.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const width = rect.width;
+        const percentage = Math.max(0, Math.min(1, clickX / width));
+        return percentage * duration;
+    }
+    return 0;
+  };
+
+  // 2. Start Dragging
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    const newTime = calculateTimeFromMouseEvent(e);
+    handleSeek(newTime); // Jump immediately to click
+  };
+
+  // 3. Handle Dragging (Global Listener)
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging) {
+        const newTime = calculateTimeFromMouseEvent(e);
+        handleSeek(newTime);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      // Optional: If you want it to resume playing after drag
+      if (isPlaying && videoRef.current) {
+         videoRef.current.play();
+      }
+    };
+
+    if (isDragging) {
+      // Attach to window so you can drag outside the bar
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, duration, isPlaying]); // Dependencies
+
+
   const formatTime = (seconds: number) => {
+    if (!Number.isFinite(seconds)) return "0:00";
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
+
+  // Auto-hide controls
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const resetTimer = () => {
+      setShowControls(true);
+      clearTimeout(timeout);
+      if (isPlaying && !isDragging) { // Don't hide while dragging
+        timeout = setTimeout(() => setShowControls(false), 3000);
+      }
+    };
+    window.addEventListener('mousemove', resetTimer);
+    return () => {
+      window.removeEventListener('mousemove', resetTimer);
+      clearTimeout(timeout);
+    };
+  }, [isPlaying, isDragging]);
+
 
   if (session.status === 'analyzing') {
     return (
@@ -74,12 +150,9 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
         </div>
         <h2 className="text-2xl font-semibold text-gray-200 mt-8 mb-2">Analyzing Footage</h2>
         <div className="flex items-center space-x-2 text-sm font-mono text-gray-500 bg-[#282a2c] px-4 py-2 rounded-full border border-gray-800">
-          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-          <span>SHA-256: {session.hash?.substring(0, 16)}...</span>
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span>SHA-256: {session.hash?.substring(0, 16)}...</span>
         </div>
-        <p className="mt-8 text-gray-500 text-sm max-w-md text-center">
-          Sakshya AI is processing your video with Gemini 1.5 Pro to identify events matching your description.
-        </p>
       </div>
     );
   }
@@ -96,32 +169,101 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
 
   return (
     <div className="h-full flex flex-col lg:flex-row gap-6 p-6 max-w-[1600px] mx-auto overflow-hidden">
-      {/* Left Column: Video Player */}
-      <div className="flex-1 flex flex-col min-h-0 bg-[#000] rounded-2xl overflow-hidden border border-gray-800 shadow-2xl relative group">
-        <div className="flex-1 relative">
-            <Player
-              ref={playerRef}
-              url={session.videoUrl || ''}
-              width="100%"
-              height="100%"
-              playing={playing}
-              controls={true}
-              onProgress={({ playedSeconds }:any) => setCurrentTime(playedSeconds)}
-              onDuration={setDuration}
-              style={{ position: 'absolute', top: 0, left: 0 }}
-            />
-        </div>
+      
+      {/* --- Left Column: CUSTOM VIDEO PLAYER --- */}
+      <div ref={containerRef} className="flex-1 flex flex-col min-h-0 bg-black rounded-2xl overflow-hidden border border-gray-800 shadow-2xl relative group">
         
-        {/* Helper overlay when paused/hover */}
-        <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-xs font-medium text-white border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-            {session.videoName}
+        {/* Video Element */}
+        <div 
+            className="w-full h-full relative bg-black flex items-center justify-center cursor-pointer"
+            onClick={togglePlay}
+        >
+            <video
+              ref={videoRef}
+              src={session.videoUrl || ''}
+              className="w-full h-full object-contain"
+              playsInline
+              onTimeUpdate={handleTimeUpdate}
+              onLoadedMetadata={handleLoadedMetadata}
+              onEnded={() => setIsPlaying(false)}
+            />
+            
+            {!isPlaying && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px] transition-all">
+                    <div className="w-16 h-16 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20 shadow-xl group-hover:scale-110 transition-transform">
+                        <Play className="w-8 h-8 text-white fill-white ml-1" />
+                    </div>
+                </div>
+            )}
+        </div>
+
+        {/* --- CUSTOM CONTROL BAR --- */}
+        <div className={`
+            absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent px-4 pb-4 pt-12 transition-opacity duration-300
+            ${showControls ? 'opacity-100' : 'opacity-0'}
+        `}>
+            
+            {/* Draggable Progress Bar Container */}
+            <div 
+                ref={progressBarRef}
+                className="relative w-full h-1.5 bg-gray-600/50 hover:h-2.5 transition-all cursor-pointer rounded-full mb-3 group/bar touch-none"
+                onMouseDown={handleMouseDown}
+            >
+                {/* Red Progress Fill */}
+                <div 
+                    className="absolute top-0 left-0 h-full bg-red-600 rounded-full z-10 pointer-events-none"
+                    style={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+                >
+                    {/* Draggable Handle Dot (Only visible on hover or dragging) */}
+                    <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 bg-red-600 rounded-full shadow opacity-0 group-hover/bar:opacity-100 transition-opacity scale-150" />
+                </div>
+
+                {/* Event Markers */}
+                {session.events.map((event, idx) => {
+                    const position = (event.timestamp / (duration || 1)) * 100;
+                    return (
+                        <div
+                            key={idx}
+                            className="absolute top-0 w-1 h-full bg-blue-400 z-20 hover:scale-y-150 hover:w-1.5 transition-all"
+                            style={{ left: `${position}%` }}
+                            title={`${formatTime(event.timestamp)}: ${event.description}`}
+                        />
+                    );
+                })}
+            </div>
+
+            {/* Buttons Row */}
+            <div className="flex items-center justify-between text-white select-none">
+                <div className="flex items-center gap-4">
+                    <button onClick={togglePlay} className="hover:text-blue-400 transition-colors p-1">
+                        {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
+                    </button>
+                    
+                    <button onClick={toggleMute} className="hover:text-blue-400 transition-colors p-1">
+                        {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                    </button>
+
+                    <div className="text-xs font-mono text-gray-300">
+                        {formatTime(currentTime)} / {formatTime(duration)}
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-gray-400 hidden sm:block">
+                        {session.videoName}
+                    </span>
+                    <button onClick={toggleFullscreen} className="hover:text-blue-400 transition-colors p-1">
+                        <Maximize className="w-5 h-5" />
+                    </button>
+                </div>
+            </div>
         </div>
       </div>
 
-      {/* Right Column: Analysis Results */}
+      {/* --- Right Column: Analysis Results --- */}
       <div className="w-full lg:w-96 flex flex-col gap-4 min-h-0">
         
-        {/* Stats Card */}
+        {/* Stats */}
         <div className="bg-[#1e1f20] border border-gray-700 p-4 rounded-xl shrink-0">
             <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider mb-3">Detection Summary</h3>
             <div className="grid grid-cols-2 gap-3">
@@ -130,27 +272,36 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
                     <div className="text-xs text-gray-500">Events Found</div>
                 </div>
                 <div className="bg-[#282a2c] p-3 rounded-lg border border-gray-800">
-                    <div className="text-2xl font-bold text-blue-400">{(session.events.reduce((acc, curr) => acc + curr.confidence, 0) / session.events.length * 100).toFixed(0)}%</div>
+                    <div className="text-2xl font-bold text-blue-400">
+                        {session.events.length > 0 
+                         ? (session.events.reduce((acc, curr) => acc + curr.confidence, 0) / session.events.length * 100).toFixed(0) 
+                         : 0}%
+                    </div>
                     <div className="text-xs text-gray-500">Avg. Confidence</div>
                 </div>
             </div>
         </div>
 
-        {/* Timeline Events List */}
+        {/* List */}
         <div className="flex-1 bg-[#1e1f20] border border-gray-700 rounded-xl overflow-hidden flex flex-col min-h-0">
           <div className="p-4 border-b border-gray-700 flex items-center justify-between bg-[#282a2c]">
             <h3 className="font-semibold text-gray-200 flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-green-500" />
               Timeline
             </h3>
-            <span className="text-xs text-gray-500">Click to seek</span>
           </div>
 
           <div className="overflow-y-auto flex-1 p-2 space-y-2 custom-scrollbar">
             {session.events.map((event, idx) => (
               <button
                 key={idx}
-                onClick={() => handleSeek(event.timestamp)}
+                onClick={() => {
+                  handleSeek(event.timestamp);
+                  if(!isPlaying) {
+                    videoRef.current?.play();
+                    setIsPlaying(true);
+                  }
+                }}
                 className={`w-full text-left p-3 rounded-lg border transition-all duration-200 group
                   ${Math.abs(currentTime - event.timestamp) < 2 
                     ? 'bg-blue-500/10 border-blue-500/50 hover:bg-blue-500/20' 
@@ -175,12 +326,6 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
                 </p>
               </button>
             ))}
-            
-            {session.events.length === 0 && (
-                <div className="text-center py-10 text-gray-500 text-sm">
-                    No significant events detected matching your criteria.
-                </div>
-            )}
           </div>
         </div>
 
