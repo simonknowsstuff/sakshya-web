@@ -52,13 +52,12 @@ exports.getTimestampsFromGemini = onCall(
         memory: "512MiB" 
     },
     async (req) => {
-        // Please uncomment the following lines to enforce authentication:
-        // if (!req.auth || !req.auth.uid) {
-        //     throw new HttpsError(
-        //         "unauthenticated", 
-        //         "The function must be called while authenticated."
-        //     );
-        // }
+        if (!req.auth || !req.auth.uid) {
+            throw new HttpsError(
+                "unauthenticated", 
+                "The function must be called while authenticated."
+            );
+        }
 
         const { storageUri, userPrompt } = req.data;
         if (!storageUri) {
