@@ -22,6 +22,10 @@ const generationConfig = {
                         to: {
                             type: "string",
                             description: "End time of the timestamp in HH:MM:SS format."
+                        },
+                        summary: {
+                            type: "string",
+                            description: "A brief summary of the content at the specified timestamp."
                         }
                     },
                     required: ["from", "to"]
