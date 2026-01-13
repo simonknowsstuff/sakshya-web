@@ -8,7 +8,8 @@ export interface VideoSession {
 }
 
 export interface TimelineEvent {
-    timestamp: number;
+    fromTimestamp: number;
+    toTimestamp: number;
     description: string;
     confidence: number;
 }

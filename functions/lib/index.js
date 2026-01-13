@@ -26,9 +26,13 @@ const generationConfig = {
                         summary: {
                             type: "string",
                             description: "A brief summary of the content at the specified timestamp."
+                        },
+                        confidence: {
+                            type: "number",
+                            description: "Confidence score of the timestamp extraction (0 to 1)."
                         }
                     },
-                    required: ["from", "to"]
+                    required: ["from", "to", "summary", "confidence"]
                 }
             }
         },

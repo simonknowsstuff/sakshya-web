@@ -220,13 +220,13 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
 
                 {/* Event Markers */}
                 {session.events.map((event, idx) => {
-                    const position = (event.timestamp / (duration || 1)) * 100;
+                    const position = (event.fromTimestamp / (duration || 1)) * 100;
                     return (
                         <div
                             key={idx}
                             className="absolute top-0 w-1 h-full bg-blue-400 z-20 hover:scale-y-150 hover:w-1.5 transition-all"
                             style={{ left: `${position}%` }}
-                            title={`${formatTime(event.timestamp)}: ${event.description}`}
+                            title={`${formatTime(event.fromTimestamp)}: ${event.description}`}
                         />
                     );
                 })}
@@ -296,14 +296,14 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
               <button
                 key={idx}
                 onClick={() => {
-                  handleSeek(event.timestamp);
+                  handleSeek(event.fromTimestamp);
                   if(!isPlaying) {
                     videoRef.current?.play();
                     setIsPlaying(true);
                   }
                 }}
                 className={`w-full text-left p-3 rounded-lg border transition-all duration-200 group
-                  ${Math.abs(currentTime - event.timestamp) < 2 
+                  ${Math.abs(currentTime - event.fromTimestamp) < 2 
                     ? 'bg-blue-500/10 border-blue-500/50 hover:bg-blue-500/20' 
                     : 'bg-[#282a2c]/50 border-gray-800 hover:bg-[#282a2c] hover:border-gray-600'}
                 `}
@@ -311,7 +311,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
                 <div className="flex justify-between items-start mb-1">
                   <div className="flex items-center gap-2 text-blue-400 font-mono text-sm font-medium bg-blue-500/10 px-2 py-0.5 rounded">
                     <Clock className="w-3 h-3" />
-                    {formatTime(event.timestamp)}
+                    {formatTime(event.fromTimestamp)}
                   </div>
                   <span className={`text-xs px-2 py-0.5 rounded-full border
                     ${event.confidence > 0.9 

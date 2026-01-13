@@ -92,7 +92,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) =>
           status: 'ready',
           events: data.timestamps.map((t: any) => ({
             // Normalize the data for our frontend types
-            timestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
+            fromTimestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
+            toTimestamp: parseTimestampToSeconds(t.end || t.to),
             description: t.description || "Event Detected",
             confidence: 1.0 // Default since Flash doesn't always return confidence
           }))
