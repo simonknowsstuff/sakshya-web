@@ -2,16 +2,18 @@ import React, { useState, useRef } from 'react';
 import { Upload, X, FileVideo, ArrowUp, Loader2, AlertCircle } from 'lucide-react';
 import type { VideoSession } from '../types';
 import { httpsCallable } from 'firebase/functions';
-import { ref, uploadBytes } from 'firebase/storage';
-import { functions, storage } from '../lib/firebase'; // Import from your centralized file
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // <--- Added getDownloadURL
+import { functions, storage } from '../lib/firebase';
 import { useFileHash } from '../hooks/useFileHash';
 
 interface ChatInterfaceProps {
   session: VideoSession;
   setSession: React.Dispatch<React.SetStateAction<VideoSession>>;
+  // New Prop: Callback to save data to Firestore
+  onSaveSession?: (prompt: string, events: any[], downloadUrl: string) => void; 
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSaveSession }) => {
   const [prompt, setPrompt] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -29,14 +31,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) =>
   const parseTimestampToSeconds = (timeStr: string | number): number => {
     if (typeof timeStr === 'number') return timeStr;
     if (!timeStr) return 0;
-    
-    // Handle "MM:SS" or "HH:MM:SS"
     const parts = timeStr.toString().split(':').map(Number);
-    if (parts.some(isNaN)) return 0; // Safety check
-
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]; // HH:MM:SS
-    if (parts.length === 2) return parts[0] * 60 + parts[1]; // MM:SS
-    return parts[0]; // Just seconds
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0];
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -48,27 +47,36 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) =>
 
       // 1. Generate Hash
       const hash = await generateHash(selectedFile);
-      const objectUrl = URL.createObjectURL(selectedFile);
+      
+      // Temporary Blob URL for immediate UI feedback (while uploading)
+      const tempBlobUrl = URL.createObjectURL(selectedFile);
 
-      // Update State: UPLOADING
       setSession(prev => ({
         ...prev,
         status: 'uploading', 
-        videoUrl: objectUrl,
+        videoUrl: tempBlobUrl, 
         videoName: selectedFile.name,
         hash: hash,
         events: []
       }));
 
       // 2. Upload to Firebase Storage
-      // Naming convention: evidence/{hash}.mp4 (Prevents duplicates)
       const storageRef = ref(storage, `evidence/${hash}.mp4`);
       
       console.log("Step 1: Uploading to Storage...");
       await uploadBytes(storageRef, selectedFile);
       
-      // 3. Construct gs:// URI
-      // This is the Zero-Copy link for Vertex AI
+      // 3. GET PERMANENT DOWNLOAD URL (The Fix)
+      // Now that upload is done, get the https:// link
+      const permanentUrl = await getDownloadURL(storageRef);
+
+      // Update session with the permanent URL immediately
+      setSession(prev => ({
+        ...prev,
+        videoUrl: permanentUrl // <--- Swapping Blob for Real URL
+      }));
+
+      // 4. Construct gs:// URI for Gemini
       const bucketName = storageRef.bucket; 
       const gcsUri = `gs://${bucketName}/evidence/${hash}.mp4`;
 
@@ -76,28 +84,34 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) =>
       setSession(prev => ({ ...prev, status: 'analyzing' }));
       console.log("Step 2: Calling Gemini...");
 
-      // 4. Call Cloud Function
+      // 5. Call Cloud Function
       const getTimestamps = httpsCallable(functions, 'getTimestampsFromGemini');
       const response = await getTimestamps({ 
         storageUri: gcsUri, 
         userPrompt: prompt 
       });
 
-      // 5. Handle Results
-      const data = response.data as any; // Type assertion since we know the schema
+      // 6. Handle Results
+      const data = response.data as any;
       
       if (data.timestamps) {
+        const formattedEvents = data.timestamps.map((t: any) => ({
+          timestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
+          description: t.description || "Event Detected",
+          confidence: 1.0 
+        }));
+
         setSession(prev => ({
           ...prev,
           status: 'ready',
-          events: data.timestamps.map((t: any) => ({
-            // Normalize the data for our frontend types
-            fromTimestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
-            toTimestamp: parseTimestampToSeconds(t.end || t.to),
-            description: t.description || "Event Detected",
-            confidence: 1.0 // Default since Flash doesn't always return confidence
-          }))
+          events: formattedEvents
         }));
+
+        // 7. SAVE TO FIRESTORE (Using the Prop)
+        if (onSaveSession) {
+          // We pass the permanentUrl so the DB stores the correct link
+          onSaveSession(prompt, formattedEvents, permanentUrl);
+        }
       } else {
         throw new Error("Invalid response format from AI");
       }
@@ -109,14 +123,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession }) =>
     }
   };
 
-  // If the session is already active (video loaded), we will show the Player later.
-  // For now, let's handle the "Empty State" (Upload Screen).
-  // MOVED: The Loading state and Player view are now handled by AnalysisView.tsx in App.tsx
   if (session.status !== 'idle') {
-    return null; // Should be handled by parent
+    return null; 
   }
 
-  // --- VIEW 3: EMPTY STATE (Upload Form) ---
   return (
     <div className="flex flex-col h-full max-w-3xl mx-auto w-full px-4">
       {/* Header Area */}

@@ -1,6 +1,7 @@
 // src/lib/firebase.ts
 import { initializeApp } from 'firebase/app';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAuth } from "firebase/auth";
 import { 
@@ -25,6 +26,7 @@ const app = initializeApp(firebaseConfig);
 
 // 3. Initialize Services
 export const functions = getFunctions(app);
+export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const auth = getAuth(app);
 
@@ -38,6 +40,7 @@ if (typeof window !== 'undefined') {
     self.FIREBASE_APPCHECK_DEBUG_TOKEN = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN || true;
     console.log("Sakshya AI: Using Manual Debug Token");
     connectFunctionsEmulator(functions, 'localhost', 5001);
+    connectFirestoreEmulator(db, 'localhost', 8080);
   }
 
   try {

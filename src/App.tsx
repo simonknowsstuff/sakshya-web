@@ -8,6 +8,7 @@ import ChatInterface from './components/ChatInterface';
 import AnalysisView from './components/AnalysisView';
 import Login from './components/Login';
 import type { VideoSession } from './types';
+import { useChatHistory } from './hooks/useChatHistory';
 
 function App() {
   // --- Auth State ---
@@ -17,7 +18,7 @@ function App() {
   // --- App State ---
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentSession, setCurrentSession] = useState<VideoSession>({
-    id: 'new-session',
+    id: 'new',
     videoUrl: null,
     videoName: '',
     hash: null,
@@ -25,7 +26,41 @@ function App() {
     events: []
   });
 
-  // Listen for login/logout events
+  const { chats, createSession, saveMessage, loadMessages } = useChatHistory();
+
+  const handleNewChat = () => {
+    setCurrentSession({
+      id: 'new',
+      videoUrl: null,
+      videoName: '',
+      hash: null,
+      status: 'idle',
+      events: []
+    });
+  };
+
+  const handleSelectChat = async (chatId: string) => {
+    const chat = chats.find(c => c.id === chatId);
+    if (chat) {
+      setCurrentSession({
+        id: chat.id,
+        videoUrl: chat.previewUrl || null,
+        videoName: chat.videoName || '',
+        hash: chat.videoHash || null,
+        status: 'ready',
+        events: []
+      });
+
+      const historyEvents = await loadMessages(chatId);
+      setCurrentSession(prev => {
+        if (prev.id === chatId) {
+          return { ...prev, events: historyEvents };
+        }
+        return prev;
+      });
+    }
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -34,19 +69,10 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  const backToChat = () => {
-    setCurrentSession(prev => ({
-      ...prev,
-      status: 'idle',
-      videoUrl: null,
-      events: []
-    }));
-  };
-
   const handleLogout = () => {
     signOut(auth);
     // Optional: Reset session state on logout
-    backToChat();
+    handleNewChat();
   };
 
   // --- VIEW 1: LOADING ---
@@ -90,7 +116,12 @@ function App() {
         `}
       >
         {/* Your Existing Sidebar Component */}
-        <Sidebar onNewChat={backToChat} />
+        <Sidebar 
+          onNewChat={handleNewChat} 
+          chats={chats}
+          onSelectChat={handleSelectChat}
+          currentChatId={currentSession.id}
+        />
         
         {/* NEW: User Profile & Logout (Stays at bottom) */}
         <div className="p-4 border-t border-gray-800 mt-auto bg-[#1e1f20]">
@@ -125,9 +156,20 @@ function App() {
         )}
 
         {currentSession.status === 'idle' ? (
-          <ChatInterface session={currentSession} setSession={setCurrentSession}/>
+          <ChatInterface 
+            session={currentSession} 
+            setSession={setCurrentSession}
+            onSaveSession={async (prompt, events, downloadUrl) => {
+              let chatId = currentSession.id;
+              if (chatId === 'new') {
+                chatId = await createSession({ ...currentSession, videoUrl: downloadUrl });
+                setCurrentSession(prev => ({ ...prev, id: chatId }));
+              }
+              await saveMessage(chatId, prompt, events);
+            }}
+          />
         ) : (
-          <AnalysisView session={currentSession} setSession={setCurrentSession} onBack={backToChat}/>
+          <AnalysisView session={currentSession} setSession={setCurrentSession} onBack={handleNewChat}/>
         )}
       </main>
     </div>

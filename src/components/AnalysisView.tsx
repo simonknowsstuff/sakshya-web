@@ -141,6 +141,22 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
   }, [isPlaying, isDragging]);
 
 
+  if (session.status === 'uploading') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-gray-400 animate-fade-in">
+        <div className="relative">
+          <div className="absolute inset-0 bg-blue-500 blur-xl opacity-20 rounded-full animate-pulse" />
+          <Loader2 className="w-16 h-16 animate-spin relative z-10 text-blue-500" />
+        </div>
+        <h2 className="text-2xl font-semibold text-gray-200 mt-8 mb-2">Uploading Footage</h2>
+        <div className="flex items-center space-x-2 text-sm font-mono text-gray-500 bg-[#282a2c] px-4 py-2 rounded-full border border-gray-800">
+            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+            <span>SHA-256: {session.hash?.substring(0, 16)}...</span>
+        </div>
+      </div>
+    );
+  }
+
   if (session.status === 'analyzing') {
     return (
       <div className="flex flex-col items-center justify-center h-full text-gray-400 animate-fade-in">
