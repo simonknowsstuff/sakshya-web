@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getAuth } from "firebase/auth";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
 import { 
   initializeAppCheck, 
   ReCaptchaV3Provider, 
@@ -41,6 +41,7 @@ if (typeof window !== 'undefined') {
     console.log("Sakshya AI: Using Manual Debug Token");
     connectFunctionsEmulator(functions, 'localhost', 5001);
     connectFirestoreEmulator(db, 'localhost', 8080);
+    connectAuthEmulator(auth, 'http://localhost:9099');
   }
 
   try {

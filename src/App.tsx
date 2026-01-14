@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Menu, LogOut } from 'lucide-react';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { auth } from './lib/firebase';
+import { useChatHistory } from './hooks/useChatHistory';
 
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
@@ -15,13 +16,48 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   const [currentSession, setCurrentSession] = useState<VideoSession>({
-    id: 'new-session', 
+    id: 'new', 
     videoUrl: null, 
     videoName: '', 
     hash: null, 
     status: 'idle', 
     events: []
   });
+
+  const { chats, createSession, saveMessage, loadMessages } = useChatHistory();
+
+  const handleNewChat = () => {
+    setCurrentSession({
+      id: 'new',
+      videoUrl: null,
+      videoName: '',
+      hash: null,
+      status: 'idle',
+      events: []
+    });
+  };
+
+  const handleSelectChat = async (chatId: string) => {
+    const chat = chats.find(c => c.id === chatId);
+    if (chat) {
+      setCurrentSession({
+        id: chat.id,
+        videoUrl: chat.previewUrl || null,
+        videoName: chat.videoName || '',
+        hash: chat.videoHash || null,
+        status: 'ready',
+        events: []
+      });
+
+      const historyEvents = await loadMessages(chatId);
+      setCurrentSession(prev => {
+        if (prev.id === chatId) {
+          return { ...prev, events: historyEvents };
+        }
+        return prev;
+      });
+    }
+  };
 
   // Listen for auth state changes
   useEffect(() => {
@@ -83,7 +119,12 @@ function App() {
           flex flex-col
         `}
       >
-        <Sidebar onNewChat={() => setCurrentSession(prev => ({ ...prev, status: 'idle', videoUrl: null, events: [] }))} />
+        <Sidebar 
+          onNewChat={handleNewChat} 
+          chats={chats}
+          onSelectChat={handleSelectChat}
+          currentChatId={currentSession.id}
+        />
         
         {/* User Profile Footer */}
         <div className="p-4 border-t border-gray-800 mt-auto bg-[#1e1f20]">
@@ -126,9 +167,20 @@ function App() {
         )}
 
         {currentSession.status === 'idle' ? (
-          <ChatInterface session={currentSession} setSession={setCurrentSession}/>
+          <ChatInterface 
+            session={currentSession} 
+            setSession={setCurrentSession}
+            onSaveSession={async (prompt, events, downloadUrl) => {
+              let chatId = currentSession.id;
+              if (chatId === 'new') {
+                chatId = await createSession({ ...currentSession, videoUrl: downloadUrl });
+                setCurrentSession(prev => ({ ...prev, id: chatId }));
+              }
+              await saveMessage(chatId, prompt, events);
+            }}
+          />
         ) : (
-          <AnalysisView session={currentSession} setSession={setCurrentSession} onBack={() => setCurrentSession(prev => ({ ...prev, status: 'idle' }))}/>
+          <AnalysisView session={currentSession} setSession={setCurrentSession} onBack={handleNewChat}/>
         )}
       </main>
     </div>

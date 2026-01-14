@@ -140,8 +140,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
             Sakshya AI
           </h1>
           <p className="text-gray-400 text-lg">
-            Upload CCTV footage. Describe the event. <br/> 
-            <span className="text-gray-500 text-base">Instant retrieval powered by Gemini 1.5 Pro</span>
+            Upload any footage. Describe the event. <br/> 
+            <span className="text-gray-500 text-base">Instant retrieval powered by Gemini.</span>
           </p>
         </div>
       </div>
