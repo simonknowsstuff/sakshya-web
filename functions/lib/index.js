@@ -73,7 +73,7 @@ exports.getTimestampsFromGemini = onCall(
             );
         }
 
-        const allowedModels = ['gemini-2.5-flash', 'gemini-1.5-pro'];
+        const allowedModels = ['gemini-2.5-flash', 'gemini-2.5-pro'];
         if (userModel && !allowedModels.includes(userModel)) {
             throw new HttpsError(
                 "invalid-argument",
