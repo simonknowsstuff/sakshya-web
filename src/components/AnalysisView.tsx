@@ -168,7 +168,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
         const newEvents = data.timestamps.map((t: any) => ({
             fromTimestamp: typeof t.from === 'number' ? t.from : parseFloat(t.from) || 0,
             toTimestamp: typeof t.to === 'number' ? t.to : parseFloat(t.to) || 0,
-            summary: t.summary || t.description || "Event Detected", // Handle both fields
+            summary: t.summary || "Event Detected", // Handle both fields
             confidence: t.confidence || 1.0
         }));
 

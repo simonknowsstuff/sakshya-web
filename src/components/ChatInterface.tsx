@@ -118,7 +118,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
         const formattedEvents = data.timestamps.map((t: any) => ({
           fromTimestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
           toTimestamp: parseTimestampToSeconds(t.end || t.to),
-          description: t.description || "Event Detected",
+          summary: t.summary || "Event Detected",
           confidence: t.confidence || 1.0 
         }));
 
