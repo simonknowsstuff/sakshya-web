@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Loader2, AlertCircle, CheckCircle2, Clock, Play, Pause, Maximize, Volume2, VolumeX, FileText } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, Clock, Play, Pause, Maximize, Volume2, VolumeX } from 'lucide-react';
 import type { VideoSession } from '../types';
 
 interface AnalysisViewProps {
@@ -178,12 +178,17 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
   // --- MAIN RENDER ---
 
   return (
-    <div className="h-full flex flex-col lg:flex-row gap-6 p-6 max-w-[1600px] mx-auto overflow-hidden">
+    <div className="w-full h-full flex flex-col lg:flex-row gap-6 p-6 max-w-[1600px] mx-auto overflow-hidden">
       
       {/* --- Left Column: CUSTOM VIDEO PLAYER --- */}
-      <div ref={containerRef} className="flex-1 flex flex-col min-h-0 bg-black rounded-2xl overflow-hidden border border-gray-800 shadow-2xl relative group">
+      
+      <div 
+        ref={containerRef} 
+        className="flex-1 relative min-w-0 bg-black rounded-2xl overflow-hidden border border-gray-800 shadow-2xl group"
+      >
+        
         <div 
-            className="w-full h-full relative bg-black flex items-center justify-center cursor-pointer"
+            className="absolute inset-0 w-full h-full flex items-center justify-center cursor-pointer bg-black"
             onClick={togglePlay}
         >
             <video
@@ -205,9 +210,9 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
             )}
         </div>
 
-        {/* Control Bar */}
+        {/* Control Bar - also absolute to sit on top */}
         <div className={`
-            absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent px-4 pb-4 pt-12 transition-opacity duration-300
+            absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent px-4 pb-4 pt-12 transition-opacity duration-300 z-10
             ${showControls ? 'opacity-100' : 'opacity-0'}
         `}>
             {/* Progress Bar */}
@@ -287,8 +292,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
             </div>
         </div>
 
-        
-        {/* 3. Timeline List */}
+        {/* 2. Timeline List */}
         <div className="flex-1 bg-[#1e1f20] border border-gray-700 rounded-xl overflow-hidden flex flex-col min-h-0">
           <div className="p-4 border-b border-gray-700 flex items-center justify-between bg-[#282a2c]">
             <h3 className="font-semibold text-gray-200 flex items-center gap-2">
@@ -299,7 +303,6 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
 
           <div className="overflow-y-auto flex-1 p-2 space-y-2 custom-scrollbar">
             {session.events.map((event, idx) => {
-                // Check if current video time is WITHIN this event's range
                 const isActive = currentTime >= event.fromTimestamp && currentTime <= event.toTimestamp;
 
                 return (
@@ -337,7 +340,6 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
                   </button>
                 );
             })}
-          
           </div>
         </div>
 
