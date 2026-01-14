@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   collection, query, orderBy, addDoc, onSnapshot, serverTimestamp, doc, setDoc, getDocs
 } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged } from 'firebase/auth'; // Import onAuthStateChanged
+import { getAuth, onAuthStateChanged } from 'firebase/auth'; 
 import { db } from '../lib/firebase';
 import { VideoSession } from '../types';
 
@@ -12,12 +12,9 @@ export const useChatHistory = () => {
   const auth = getAuth();
 
   useEffect(() => {
-    // 1. Listen for AUTH changes (Login/Logout)
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
-        // 2. User is logged in -> Listen to FIRESTORE
         const chatsRef = collection(db, `users/${user.uid}/chats`);
-        // We order by 'createdAt' descending so newest chats appear at the top
         const q = query(chatsRef, orderBy('createdAt', 'desc'));
 
         const unsubscribeFirestore = onSnapshot(q, (snapshot) => {
@@ -32,26 +29,22 @@ export const useChatHistory = () => {
            setLoading(false);
         });
 
-        // Cleanup the Firestore listener when the user logs out or component unmounts
         return () => unsubscribeFirestore();
       } else {
-        // User logged out -> Clear list
         setChats([]);
         setLoading(false);
       }
     });
 
-    // Cleanup the Auth listener
     return () => unsubscribeAuth();
-  }, []); // Empty dependency array = run once on mount
+  }, []); 
 
-  // --- Helpers (Keep these the same) ---
+  // --- Helpers ---
 
   const createSession = async (sessionData: VideoSession, modelId: string = 'gemini-2.5-flash') => {
     const user = auth.currentUser;
     if (!user) throw new Error("Must be logged in to save history");
 
-    // Important: Use the passed sessionData.videoUrl (which should be the downloadUrl)
     const chatRef = await addDoc(collection(db, `users/${user.uid}/chats`), {
       videoName: sessionData.videoName,
       videoHash: sessionData.hash,
@@ -70,44 +63,49 @@ export const useChatHistory = () => {
 
     const messagesRef = collection(db, `users/${user.uid}/chats/${chatId}/messages`);
     
+    // 1. Save User Prompt
     await addDoc(messagesRef, {
       role: 'user',
       content: prompt,
       createdAt: serverTimestamp()
     });
 
+    // 2. Save AI Response (The Events)
     await addDoc(messagesRef, {
       role: 'assistant',
-      content: aiEvents,
+      content: aiEvents, // This is an array of objects
       createdAt: serverTimestamp()
     });
 
-    // Update the title to match the prompt
+    // Update Title
     const chatDocRef = doc(db, `users/${user.uid}/chats/${chatId}`);
     await setDoc(chatDocRef, { title: prompt }, { merge: true });
   };
 
+  // --- THE FIX IS HERE ---
   const loadMessages = async (chatId: string) => {
     const user = auth.currentUser;
     if (!user) return [];
 
     try {
       const messagesRef = collection(db, `users/${user.uid}/chats/${chatId}/messages`);
-      // Get messages in order: Question 1, Answer 1, Question 2, Answer 2...
       const q = query(messagesRef, orderBy('createdAt', 'asc'));
       const snapshot = await getDocs(q);
 
-      let allEvents: any[] = [];
 
-      snapshot.forEach((doc) => {
+      return snapshot.docs.map(doc => {
         const data = doc.data();
-        // If it's an AI response, it contains the 'content' array with our events
-        if (data.role === 'assistant' && Array.isArray(data.content)) {
-          allEvents = [...allEvents, ...data.content];
-        }
+        return {
+            id: doc.id,
+            // Convert 'assistant' -> 'ai' for the UI
+            role: data.role === 'assistant' ? 'ai' : data.role,
+            // If user, content is text. If AI, content is events data.
+            text: data.role === 'user' ? data.content : undefined, 
+            events: data.role === 'assistant' ? data.content : undefined,
+            createdAt: data.createdAt
+        };
       });
 
-      return allEvents;
     } catch (error) {
       console.error("Failed to load messages:", error);
       return [];

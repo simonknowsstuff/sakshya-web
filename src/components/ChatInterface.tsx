@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Upload, X, FileVideo, ArrowUp, Loader2, AlertCircle, Zap, Brain, ChevronUp } from 'lucide-react'; // Added ChevronUp
-import type { VideoSession } from '../types';
+import { 
+  Upload, X, FileVideo, ArrowUp, Loader2, AlertCircle, 
+  MessageSquare, User, Bot, PlayCircle, ChevronRight,
+  Zap, Brain, ChevronUp 
+} from 'lucide-react';
+import type { VideoSession, ChatMessage } from '../types';
 import { httpsCallable } from 'firebase/functions';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { functions, storage } from '../lib/firebase';
@@ -9,32 +13,51 @@ import { useFileHash } from '../hooks/useFileHash';
 interface ChatInterfaceProps {
   session: VideoSession;
   setSession: React.Dispatch<React.SetStateAction<VideoSession>>;
-  onSaveSession?: (prompt: string, events: any[], downloadUrl: string, modelId: string) => void; 
+  // FIX 1: Update interface to accept 6 arguments
+  onSaveSession?: (
+    prompt: string, 
+    events: any[], 
+    downloadUrl: string, 
+    modelId: string, 
+    videoName: string, 
+    videoHash: string
+  ) => void; 
 }
 
-// Define available models with specific styling colors if needed
+
+// --- CONSTANTS ---
 const MODELS = [
   { id: 'gemini-2.5-flash', name: 'Flash', description: 'Fast & Efficient', icon: Zap, color: 'text-yellow-400' },
   { id: 'gemini-2.5-pro', name: 'Pro', description: 'Complex Reasoning', icon: Brain, color: 'text-purple-400' },
 ];
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSaveSession }) => {
+  // State
   const [prompt, setPrompt] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  
-  // Model Selection State
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  // Model Selector State
   const [selectedModelId, setSelectedModelId] = useState(MODELS[0].id);
-  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false); // Toggle for custom dropdown
-  
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+
+  // Refs & Hooks
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null); // To detect clicks outside
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const { isHashing, generateHash } = useFileHash();
 
-  // Helper: Get current model object
   const currentModel = MODELS.find(m => m.id === selectedModelId) || MODELS[0];
 
-  // Close dropdown if clicking outside
+  // Scroll to bottom on new message
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [session.chatHistory]);
+
+  // Close dropdown on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -56,7 +79,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
     if (typeof timeStr === 'number') return timeStr;
     if (!timeStr) return 0;
     const parts = timeStr.toString().split(':').map(Number);
-    if (parts.some(isNaN)) return 0;
     if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
     if (parts.length === 2) return parts[0] * 60 + parts[1];
     return parts[0];
@@ -64,117 +86,234 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFile || !prompt) return;
+    if (!prompt) return;
+    
+    // Check: Do we have a video? (Either currently selected OR previously uploaded)
+    if (!selectedFile && !session.gcsUri) {
+        setErrorMsg("Please upload a video to start the investigation.");
+        return;
+    }
+
+    const userMsgId = Date.now().toString();
+    const aiMsgId = (Date.now() + 1).toString();
+
+    // 1. Optimistically Add User Message
+    const newHistory: ChatMessage[] = [
+        ...(session.chatHistory || []),
+        { id: userMsgId, role: 'user', text: prompt, timestamp: Date.now() },
+        { id: aiMsgId, role: 'ai', text: '', timestamp: Date.now(), isLoading: true }
+    ];
+    
+    setSession(prev => ({ ...prev, chatHistory: newHistory }));
+    setPrompt('');
+    setIsProcessing(true);
+    setErrorMsg(null);
+    setIsModelMenuOpen(false);
 
     try {
-      setErrorMsg(null);
-      setIsModelMenuOpen(false); // Close menu if open
+        let currentGcsUri = session.gcsUri;
+        let currentDownloadUrl = session.videoUrl;
+        let currentVideoName = session.videoName;
+        let currentHash = session.hash;
 
-      // 1. Generate Hash
-      const hash = await generateHash(selectedFile);
-      const tempBlobUrl = URL.createObjectURL(selectedFile);
+        // 2. Upload Video (ONLY if this is the first turn and file is selected)
+        if (selectedFile && !currentGcsUri) {
+            console.log("Hashing file...");
+            currentHash = await generateHash(selectedFile);
+            currentVideoName = selectedFile.name;
+            
+            const storageRef = ref(storage, `evidence/${currentHash}.mp4`);
+            
+            console.log("Uploading to Firebase...");
+            await uploadBytes(storageRef, selectedFile);
+            currentDownloadUrl = await getDownloadURL(storageRef);
+            
+            const bucketName = storageRef.bucket;
+            currentGcsUri = `gs://${bucketName}/evidence/${currentHash}.mp4`;
 
-      setSession(prev => ({
-        ...prev,
-        status: 'uploading', 
-        videoUrl: tempBlobUrl, 
-        videoName: selectedFile.name,
-        hash: hash,
-        events: []
-      }));
-
-      // 2. Upload to Firebase Storage
-      const storageRef = ref(storage, `evidence/${hash}.mp4`);
-      console.log("Step 1: Uploading to Storage...");
-      await uploadBytes(storageRef, selectedFile);
-      
-      // 3. Get Permanent URL
-      const permanentUrl = await getDownloadURL(storageRef);
-
-      setSession(prev => ({
-        ...prev,
-        videoUrl: permanentUrl 
-      }));
-
-      // 4. Construct gs:// URI
-      const bucketName = storageRef.bucket; 
-      const gcsUri = `gs://${bucketName}/evidence/${hash}.mp4`;
-
-      setSession(prev => ({ ...prev, status: 'analyzing' }));
-      console.log(`Step 2: Calling Gemini (${selectedModelId})...`);
-
-      // 5. Call Cloud Function
-      const getTimestamps = httpsCallable(functions, 'getTimestampsFromGemini');
-      const response = await getTimestamps({ 
-        storageUri: gcsUri, 
-        userPrompt: prompt,
-        model: selectedModelId
-      });
-
-      // 6. Handle Results
-      const data = response.data as any;
-      
-      if (data.timestamps) {
-        const formattedEvents = data.timestamps.map((t: any) => ({
-          fromTimestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
-          toTimestamp: parseTimestampToSeconds(t.end || t.to),
-          summary: t.summary || "Event Detected",
-          confidence: t.confidence || 1.0 
-        }));
-
-        setSession(prev => ({
-          ...prev,
-          status: 'ready',
-          events: formattedEvents
-        }));
-
-        if (onSaveSession) {
-          onSaveSession(prompt, formattedEvents, permanentUrl, selectedModelId);
+            // Update session so we don't upload again
+            setSession(prev => ({
+                ...prev,
+                videoUrl: currentDownloadUrl,
+                videoName: currentVideoName,
+                hash: currentHash,
+                gcsUri: currentGcsUri
+            }));
+            
+            setSelectedFile(null);
         }
-      } else {
-        throw new Error("Invalid response format from AI");
-      }
+
+        // 3. Call Gemini
+        console.log(`Analyzing with prompt: "${prompt}" using ${selectedModelId}`);
+        const getTimestamps = httpsCallable(functions, 'getTimestampsFromGemini');
+        const response = await getTimestamps({ 
+            storageUri: currentGcsUri, 
+            userPrompt: prompt,
+            model: selectedModelId 
+        });
+
+        const data = response.data as any;
+
+        // 4. Process Response
+        if (data.timestamps) {
+            const formattedEvents = data.timestamps.map((t: any) => ({
+                fromTimestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
+                toTimestamp: parseTimestampToSeconds(t.end || t.to),
+                summary: t.description || t.summary || "Event Detected",
+                confidence: t.confidence || 0.9
+            }));
+
+            // Update AI Message in history
+            setSession(prev => ({
+                ...prev,
+                chatHistory: prev.chatHistory?.map(msg => 
+                    msg.id === aiMsgId 
+                        ? { 
+                            ...msg, 
+                            isLoading: false, 
+                            text: data.description || `Found ${formattedEvents.length} relevant events.`,
+                            analysisData: {
+                                events: formattedEvents,
+                                summary: data.description,
+                                confidence: 0.9
+                            }
+                        }
+                        : msg
+                )
+            }));
+            
+            // FIX 2: Pass all 6 arguments to the save function
+            if (onSaveSession && currentDownloadUrl) {
+                onSaveSession(
+                    prompt, 
+                    formattedEvents, 
+                    currentDownloadUrl, 
+                    selectedModelId,
+                    currentVideoName,
+                    currentHash || ""
+                );
+            }
+
+        } else {
+            throw new Error("AI returned invalid format");
+        }
 
     } catch (err: any) {
-      console.error("Analysis failed:", err);
-      setErrorMsg(err.message || "Failed to analyze video");
-      setSession(prev => ({ ...prev, status: 'idle' }));
+        console.error(err);
+        setSession(prev => ({
+            ...prev,
+            chatHistory: prev.chatHistory?.map(msg => 
+                msg.id === aiMsgId 
+                    ? { ...msg, isLoading: false, text: "Failed to analyze video. Please try again." }
+                    : msg
+            )
+        }));
+        setErrorMsg("Connection failed. See console.");
+    } finally {
+        setIsProcessing(false);
     }
   };
 
-  if (session.status !== 'idle') {
-    return null; 
-  }
+  const handleViewResults = (events: any[], description: string) => {
+      setSession(prev => ({
+          ...prev,
+          status: 'ready',
+          events: events,
+          description: description
+      }));
+  };
 
+  const hasActiveVideo = !!session.gcsUri;
+  const history = session.chatHistory || [];
+  console.log(session);
   return (
-    <div className="flex flex-col h-full max-w-3xl mx-auto w-full px-4">
-      {/* Header Area */}
-      <div className="flex-1 flex flex-col items-center justify-center min-h-0 space-y-8">
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-500/10 mb-4">
-            <div className="w-8 h-8 rounded-full bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.5)]" />
-          </div>
-          <h1 className="text-3xl font-semibold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
-            Sakshya AI
-          </h1>
-          <p className="text-gray-400 text-lg">
-            Upload any footage. Describe the event. <br/> 
-            <span className="text-gray-500 text-base">Instant retrieval powered by Gemini.</span>
-          </p>
-        </div>
+    <div className="flex flex-col h-full max-w-4xl mx-auto w-full px-4 relative">
+      
+      {/* 1. CHAT HISTORY AREA */}
+      <div className="flex-1 overflow-y-auto py-6 space-y-6 min-h-0 custom-scrollbar" ref={scrollRef}>
+        
+        {/* Empty State */}
+        {history.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full space-y-6 opacity-60">
+                <div className="w-20 h-20 rounded-3xl bg-blue-500/10 flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-full bg-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.4)]" />
+                </div>
+                <div className="text-center">
+                    <h2 className="text-2xl font-bold text-gray-200">Sakshya AI</h2>
+                    <p className="text-gray-500 mt-2">Upload footage. Start the investigation.</p>
+                </div>
+            </div>
+        )}
+
+        {/* Bubbles */}
+        {history.map((msg, index) => (
+            <div key={`${msg.id}-${index}`} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 
+                    ${msg.role === 'user' ? 'bg-blue-600' : 'bg-green-600'}`}>
+                    {msg.role === 'user' ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-white" />}
+                </div>
+
+                <div className={`flex flex-col max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                    <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed 
+                        ${msg.role === 'user' 
+                            ? 'bg-blue-600/20 text-blue-100 rounded-tr-sm border border-blue-500/20' 
+                            : 'bg-[#282a2c] text-gray-200 rounded-tl-sm border border-gray-700'
+                        }`}>
+                        
+                        {msg.isLoading ? (
+                            <div className="flex items-center gap-2 text-gray-400">
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Analyzing evidence...</span>
+                            </div>
+                        ) : (
+                            <p>{msg.text}</p>
+                        )}
+                    </div>
+
+                    {/* Interactive Result Card */}
+                    {msg.role === 'ai' && msg.analysisData && (
+                        <div className="mt-2 w-full max-w-sm">
+                            <button 
+                                onClick={() => handleViewResults(msg.analysisData!.events, msg.analysisData!.summary)}
+                                className="w-full flex items-center gap-3 p-3 bg-[#1e1f20] hover:bg-[#252628] border border-gray-700 hover:border-blue-500/50 rounded-xl transition-all group text-left"
+                            >
+                                <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-400 group-hover:scale-105 transition-transform">
+                                    <PlayCircle className="w-5 h-5" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4 className="text-sm font-medium text-gray-200">View Timeline</h4>
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                        {msg.analysisData.events.length} events found • {Math.round(msg.analysisData.confidence * 100)}% match
+                                    </p>
+                                </div>
+                                <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-blue-400" />
+                            </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        ))}
       </div>
 
-      {/* Input Area */}
-      <div className="flex-none pb-8 pt-4">
+      {/* 2. INPUT AREA */}
+      <div className="pb-6 pt-4 bg-[#131314]">
         {errorMsg && (
-            <div className="mb-4 bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg flex items-center gap-2 text-sm">
+            <div className="mb-3 flex items-center gap-2 text-sm text-red-400 bg-red-500/10 p-3 rounded-lg border border-red-500/20 animate-fade-in">
                 <AlertCircle className="w-4 h-4" />
                 {errorMsg}
             </div>
         )}
 
-        <form onSubmit={handleSubmit} className="relative bg-[#1e1f20] rounded-2xl border border-gray-700 focus-within:border-gray-600 transition-colors">
+        <form onSubmit={handleSubmit} className="relative bg-[#1e1f20] rounded-2xl border border-gray-700 focus-within:border-gray-600 transition-colors shadow-2xl">
           
+          {/* Active Context Indicators */}
+          {hasActiveVideo && !selectedFile && (
+              <div className="absolute -top-10 left-0 flex items-center gap-2 bg-[#1e1f20] border border-green-500/30 text-xs text-green-400 px-3 py-1.5 rounded-full shadow-sm">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  Context Active: <span className="text-gray-300 max-w-[150px] truncate">{session.videoName}</span>
+              </div>
+          )}
+
           {selectedFile && (
             <div className="absolute -top-12 left-0 flex items-center gap-2 bg-[#282a2c] text-sm text-gray-200 px-3 py-2 rounded-lg border border-gray-700 shadow-sm animate-fade-in">
               <FileVideo className="w-4 h-4 text-blue-400" />
@@ -196,8 +335,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe the event (e.g., 'A white SUV arriving at the gate at night')..."
-              className="w-full bg-transparent text-gray-100 placeholder-gray-500 resize-none focus:outline-none h-14"
+              placeholder={hasActiveVideo 
+                  ? "Ask another question about this footage..." 
+                  : "Describe the event (e.g., 'A white SUV arriving')..."}
+              className="w-full bg-transparent text-gray-100 placeholder-gray-500 resize-none focus:outline-none h-12 min-h-[3rem] max-h-32"
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -206,41 +347,41 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
               }}
             />
             
-            <div className="flex justify-between items-center mt-2">
+            <div className="flex justify-between items-center mt-2 border-t border-gray-700/50 pt-3">
               <div className="flex items-center gap-2">
-                <input
-                    type="file"
-                    accept="video/*"
-                    ref={fileInputRef}
-                    onChange={handleFileSelect}
-                    className="hidden"
-                />
-                
-                {/* Upload Button */}
-                <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 rounded-full transition-colors"
-                    title="Upload Video"
-                >
-                    <Upload className="w-5 h-5" />
-                </button>
+                  {/* Upload Button */}
+                  {(!hasActiveVideo || selectedFile) && (
+                     <>
+                        <input
+                            type="file"
+                            accept="video/*"
+                            ref={fileInputRef}
+                            onChange={handleFileSelect}
+                            className="hidden"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 rounded-full transition-colors"
+                            title="Upload Video"
+                        >
+                            <Upload className="w-5 h-5" />
+                        </button>
+                     </>
+                  )}
 
-                {/* --- CUSTOM MODEL SELECTOR --- */}
-                <div className="relative" ref={dropdownRef}>
-                    {/* Trigger Button */}
+                  {/* MODEL SELECTOR DROPDOWN */}
+                  <div className="relative" ref={dropdownRef}>
                     <button
                         type="button"
                         onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
                         className="flex items-center gap-2 bg-[#282a2c] hover:bg-[#323436] border border-gray-700 rounded-full py-1.5 pl-3 pr-3 transition-colors text-xs font-medium text-gray-300"
                     >
-                        {/* Dynamic Icon */}
                         <currentModel.icon className={`w-3.5 h-3.5 ${currentModel.color}`} />
-                        <span>{currentModel.name}</span>
+                        <span className="hidden sm:inline">{currentModel.name}</span>
                         <ChevronUp className={`w-3 h-3 text-gray-500 transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
 
-                    {/* Dropdown Menu (Popup) */}
                     {isModelMenuOpen && (
                         <div className="absolute bottom-full left-0 mb-2 w-48 bg-[#282a2c] border border-gray-700 rounded-xl shadow-xl overflow-hidden z-20 animate-fade-in-up">
                             {MODELS.map((m) => (
@@ -266,35 +407,29 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
                                             {m.description}
                                         </div>
                                     </div>
-                                    
-                                    {/* Selection Indicator */}
-                                    {selectedModelId === m.id && (
-                                        <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                    )}
                                 </button>
                             ))}
                         </div>
                     )}
-                </div>
+                  </div>
               </div>
 
+              {/* Submit Button */}
               <button
                 type="submit"
-                disabled={!prompt || !selectedFile || isHashing}
-                className={`p-2 rounded-lg transition-all ${
-                  prompt && selectedFile && !isHashing
+                disabled={!prompt || isProcessing || (isHashing && !!selectedFile) || (!hasActiveVideo && !selectedFile)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm font-medium ${
+                  prompt && !isProcessing && (hasActiveVideo || (selectedFile && !isHashing))
                     ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20' 
                     : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                 }`}
               >
-                {isHashing ? <Loader2 className="w-5 h-5 animate-spin" /> : <ArrowUp className="w-5 h-5" />}
+                {isProcessing || isHashing ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
+                <span>{hasActiveVideo && !selectedFile ? 'Ask Gemini' : 'Analyze'}</span>
               </button>
             </div>
           </div>
         </form>
-        <p className="text-center text-xs text-gray-600 mt-3">
-          Evidence is cryptographically hashed (SHA-256) locally before analysis.
-        </p>
       </div>
     </div>
   );

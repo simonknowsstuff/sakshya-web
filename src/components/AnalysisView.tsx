@@ -1,14 +1,13 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Loader2, AlertCircle, CheckCircle2, Clock, Play, Pause, Maximize, Volume2, VolumeX, Send } from 'lucide-react'; // Added Send
+import { Loader2, AlertCircle, CheckCircle2, Clock, Play, Pause, Maximize, Volume2, VolumeX, Send, MessageSquare, ArrowLeft } from 'lucide-react'; 
 import type { VideoSession } from '../types';
-import { httpsCallable } from 'firebase/functions'; // Import Cloud Functions
-import { functions, storage } from '../lib/firebase'; // Import Firebase instance
+import { httpsCallable } from 'firebase/functions';
+import { functions, storage } from '../lib/firebase';
 
 interface AnalysisViewProps {
   session: VideoSession;
   setSession: React.Dispatch<React.SetStateAction<VideoSession>>;
   onBack: () => void;
-  // New Prop: To save the new Q&A to Firestore
   onSaveEvents: (prompt: string, newEvents: any[]) => Promise<void>;
 }
 
@@ -159,7 +158,6 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
       const response = await getTimestamps({ 
         storageUri: gcsUri, 
         userPrompt: promptText,
-        // Optional: You could pass the model here too if you saved it in session
       });
 
       // 3. Process Results
@@ -168,7 +166,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
         const newEvents = data.timestamps.map((t: any) => ({
             fromTimestamp: typeof t.from === 'number' ? t.from : parseFloat(t.from) || 0,
             toTimestamp: typeof t.to === 'number' ? t.to : parseFloat(t.to) || 0,
-            summary: t.summary || "Event Detected", // Handle both fields
+            summary: t.summary || "Event Detected",
             confidence: t.confidence || 1.0
         }));
 
@@ -432,11 +430,15 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
           </div>
         </div>
 
+        {/* --- RETURN TO CHAT BUTTON --- */}
         <button 
             onClick={onBack}
-            className="p-3 rounded-xl bg-[#282a2c] border border-gray-700 text-gray-400 hover:text-white hover:bg-[#323436] transition-all text-sm font-medium"
+            className="p-3 rounded-xl bg-blue-600/10 border border-blue-500/20 text-blue-400 hover:bg-blue-600/20 hover:text-blue-300 transition-all text-sm font-medium flex items-center justify-center gap-2"
         >
-            Start New Investigation
+            <ArrowLeft className="w-4 h-4" />
+            <span className="flex items-center gap-2">
+                Return to Chat <MessageSquare className="w-3.5 h-3.5 opacity-60" />
+            </span>
         </button>
       </div>
     </div>
