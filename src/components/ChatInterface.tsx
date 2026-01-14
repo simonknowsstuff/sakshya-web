@@ -160,7 +160,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
                 fromTimestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
                 toTimestamp: parseTimestampToSeconds(t.end || t.to),
                 summary: t.description || t.summary || "Event Detected",
-                confidence: t.confidence || 0.9
+                confidence: t.confidence || 0.7
             }));
 
             // Update AI Message in history
@@ -175,7 +175,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
                             analysisData: {
                                 events: formattedEvents,
                                 summary: data.description,
-                                confidence: 0.9
+                                confidence: 0.8
                             }
                         }
                         : msg
@@ -308,11 +308,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
           
           {/* Active Context Indicators */}
           {hasActiveVideo && !selectedFile && (
-              <div className="absolute -top-10 left-0 flex items-center gap-2 bg-[#1e1f20] border border-green-500/30 text-xs text-green-400 px-3 py-1.5 rounded-full shadow-sm">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                  Context Active: <span className="text-gray-300 max-w-[150px] truncate">{session.videoName}</span>
-              </div>
-          )}
+            <div className="absolute -top-10 left-0 flex items-center gap-2 bg-[#1e1f20] border border-green-500/30 text-xs text-green-400 px-3 py-1.5 rounded-full shadow-sm max-w-[90vw]">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shrink-0" />
+                
+                <div className="flex items-center gap-2 min-w-0">
+                    {/* Video Name */}
+                    <span className="text-gray-300 truncate font-medium max-w-[150px]" title={session.videoName}>
+                        {session.videoName}
+                    </span>
+                    
+                    {/* Hash Display */}
+                    {session.hash && (
+                        <span 
+                            className="text-gray-500 font-mono border-l border-gray-700 pl-2 truncate cursor-help" 
+                            title={`SHA-256: ${session.hash}`} // <--- Full hash visible on mouse hover
+                        >
+                            {session.hash.substring(0, 12)}...
+                        </span>
+                    )}
+                </div>
+            </div>
+        )}
 
           {selectedFile && (
             <div className="absolute -top-12 left-0 flex items-center gap-2 bg-[#282a2c] text-sm text-gray-200 px-3 py-2 rounded-lg border border-gray-700 shadow-sm animate-fade-in">
