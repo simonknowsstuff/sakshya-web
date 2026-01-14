@@ -1,14 +1,18 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Loader2, AlertCircle, CheckCircle2, Clock, Play, Pause, Maximize, Volume2, VolumeX } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, Clock, Play, Pause, Maximize, Volume2, VolumeX, Send } from 'lucide-react'; // Added Send
 import type { VideoSession } from '../types';
+import { httpsCallable } from 'firebase/functions'; // Import Cloud Functions
+import { functions, storage } from '../lib/firebase'; // Import Firebase instance
 
 interface AnalysisViewProps {
   session: VideoSession;
   setSession: React.Dispatch<React.SetStateAction<VideoSession>>;
   onBack: () => void;
+  // New Prop: To save the new Q&A to Firestore
+  onSaveEvents: (prompt: string, newEvents: any[]) => Promise<void>;
 }
 
-const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack }) => {
+const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack, onSaveEvents }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
@@ -20,6 +24,10 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
   const [isMuted, setIsMuted] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
+
+  // --- NEW STATE FOR CHAT ---
+  const [followUpPrompt, setFollowUpPrompt] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   // --- CONTROLS LOGIC ---
 
@@ -130,6 +138,58 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
     };
   }, [isPlaying, isDragging]);
 
+  // --- NEW: HANDLE FOLLOW-UP CHAT ---
+  const handleFollowUpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!followUpPrompt.trim() || isAnalyzing) return;
+
+    const promptText = followUpPrompt;
+    setFollowUpPrompt(''); // Clear input immediately
+    setIsAnalyzing(true);
+
+    try {
+      console.log("Asking follow-up:", promptText);
+      
+      // 1. Reconstruct the gs:// URI
+      const bucketName = storage.app.options.storageBucket; 
+      const gcsUri = `gs://${bucketName}/evidence/${session.hash}.mp4`;
+
+      // 2. Call Gemini (Using your existing Cloud Function)
+      const getTimestamps = httpsCallable(functions, 'getTimestampsFromGemini');
+      const response = await getTimestamps({ 
+        storageUri: gcsUri, 
+        userPrompt: promptText,
+        // Optional: You could pass the model here too if you saved it in session
+      });
+
+      // 3. Process Results
+      const data = response.data as any;
+      if (data.timestamps) {
+        const newEvents = data.timestamps.map((t: any) => ({
+            fromTimestamp: typeof t.from === 'number' ? t.from : parseFloat(t.from) || 0,
+            toTimestamp: typeof t.to === 'number' ? t.to : parseFloat(t.to) || 0,
+            summary: t.summary || t.description || "Event Detected", // Handle both fields
+            confidence: t.confidence || 1.0
+        }));
+
+        // 4. Update Local State (Append new events)
+        setSession(prev => ({
+          ...prev,
+          events: [...prev.events, ...newEvents]
+        }));
+
+        // 5. Save to Firestore via App.tsx
+        await onSaveEvents(promptText, newEvents);
+      }
+
+    } catch (error) {
+      console.error("Follow-up failed:", error);
+      alert("Failed to analyze. Check console.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
 
   // --- LOADING STATES ---
 
@@ -210,7 +270,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
             )}
         </div>
 
-        {/* Control Bar - also absolute to sit on top */}
+        {/* Control Bar */}
         <div className={`
             absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent px-4 pb-4 pt-12 transition-opacity duration-300 z-10
             ${showControls ? 'opacity-100' : 'opacity-0'}
@@ -292,8 +352,8 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
             </div>
         </div>
 
-        {/* 2. Timeline List */}
-        <div className="flex-1 bg-[#1e1f20] border border-gray-700 rounded-xl overflow-hidden flex flex-col min-h-0">
+        {/* 2. Timeline List & Chat */}
+        <div className="flex-1 bg-[#1e1f20] border border-gray-700 rounded-xl overflow-hidden flex flex-col min-h-0 relative">
           <div className="p-4 border-b border-gray-700 flex items-center justify-between bg-[#282a2c]">
             <h3 className="font-semibold text-gray-200 flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-green-500" />
@@ -301,7 +361,15 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
             </h3>
           </div>
 
-          <div className="overflow-y-auto flex-1 p-2 space-y-2 custom-scrollbar">
+          {/* Scrollable List */}
+          <div className="overflow-y-auto flex-1 p-2 space-y-2 custom-scrollbar relative">
+             {/* Loading Overlay for Follow-up */}
+             {isAnalyzing && (
+                 <div className="absolute inset-0 bg-black/50 z-30 flex items-center justify-center backdrop-blur-sm">
+                     <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                 </div>
+             )}
+
             {session.events.map((event, idx) => {
                 const isActive = currentTime >= event.fromTimestamp && currentTime <= event.toTimestamp;
 
@@ -309,7 +377,7 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
                   <button
                     key={idx}
                     onClick={() => {
-                      handleSeek(event.fromTimestamp); // Seek to start of event
+                      handleSeek(event.fromTimestamp);
                       if(!isPlaying) {
                         videoRef.current?.play();
                         setIsPlaying(true);
@@ -341,13 +409,34 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ session, setSession, onBack
                 );
             })}
           </div>
+
+          {/* --- CHAT INPUT AREA (Fixed at bottom) --- */}
+          <div className="p-3 bg-[#282a2c] border-t border-gray-700">
+            <form onSubmit={handleFollowUpSubmit} className="relative">
+                <input
+                    type="text"
+                    value={followUpPrompt}
+                    onChange={(e) => setFollowUpPrompt(e.target.value)}
+                    placeholder="Ask another question..."
+                    disabled={isAnalyzing}
+                    className="w-full bg-[#1e1f20] text-sm text-gray-200 placeholder-gray-500 rounded-lg pl-4 pr-10 py-3 border border-gray-700 focus:border-blue-500 focus:outline-none transition-colors"
+                />
+                <button 
+                    type="submit"
+                    disabled={!followUpPrompt.trim() || isAnalyzing}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-blue-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                    <Send className="w-4 h-4" />
+                </button>
+            </form>
+          </div>
         </div>
 
         <button 
             onClick={onBack}
             className="p-3 rounded-xl bg-[#282a2c] border border-gray-700 text-gray-400 hover:text-white hover:bg-[#323436] transition-all text-sm font-medium"
         >
-            Start New Session
+            Start New Investigation
         </button>
       </div>
     </div>

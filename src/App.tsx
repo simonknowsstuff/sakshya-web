@@ -170,17 +170,27 @@ function App() {
           <ChatInterface 
             session={currentSession} 
             setSession={setCurrentSession}
-            onSaveSession={async (prompt, events, downloadUrl) => {
+            onSaveSession={async (prompt, events, downloadUrl, modelId) => {
               let chatId = currentSession.id;
               if (chatId === 'new') {
-                chatId = await createSession({ ...currentSession, videoUrl: downloadUrl });
+                chatId = await createSession(
+                  { ...currentSession, videoUrl: downloadUrl },
+                  modelId
+                );
                 setCurrentSession(prev => ({ ...prev, id: chatId }));
               }
               await saveMessage(chatId, prompt, events);
             }}
           />
         ) : (
-          <AnalysisView session={currentSession} setSession={setCurrentSession} onBack={handleNewChat}/>
+          <AnalysisView 
+            session={currentSession} 
+            setSession={setCurrentSession} 
+            onBack={handleNewChat} 
+            onSaveEvents={ async (prompt, newEvents) => {
+              await saveMessage(currentSession.id, prompt, newEvents);
+            }}
+          />
         )}
       </main>
     </div>

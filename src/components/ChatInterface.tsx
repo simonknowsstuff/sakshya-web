@@ -9,7 +9,7 @@ import { useFileHash } from '../hooks/useFileHash';
 interface ChatInterfaceProps {
   session: VideoSession;
   setSession: React.Dispatch<React.SetStateAction<VideoSession>>;
-  onSaveSession?: (prompt: string, events: any[], downloadUrl: string) => void; 
+  onSaveSession?: (prompt: string, events: any[], downloadUrl: string, modelId: string) => void; 
 }
 
 // Define available models with specific styling colors if needed
@@ -129,7 +129,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
         }));
 
         if (onSaveSession) {
-          onSaveSession(prompt, formattedEvents, permanentUrl);
+          onSaveSession(prompt, formattedEvents, permanentUrl, selectedModelId);
         }
       } else {
         throw new Error("Invalid response format from AI");

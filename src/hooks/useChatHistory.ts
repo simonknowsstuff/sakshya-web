@@ -47,7 +47,7 @@ export const useChatHistory = () => {
 
   // --- Helpers (Keep these the same) ---
 
-  const createSession = async (sessionData: VideoSession) => {
+  const createSession = async (sessionData: VideoSession, modelId: string = 'gemini-2.5-flash') => {
     const user = auth.currentUser;
     if (!user) throw new Error("Must be logged in to save history");
 
@@ -55,7 +55,8 @@ export const useChatHistory = () => {
     const chatRef = await addDoc(collection(db, `users/${user.uid}/chats`), {
       videoName: sessionData.videoName,
       videoHash: sessionData.hash,
-      previewUrl: sessionData.videoUrl, 
+      previewUrl: sessionData.videoUrl,
+      model: modelId,
       createdAt: serverTimestamp(),
       title: "New Investigation" 
     });
