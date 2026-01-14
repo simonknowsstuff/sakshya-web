@@ -8,59 +8,22 @@ import ChatInterface from './components/ChatInterface';
 import AnalysisView from './components/AnalysisView';
 import Login from './components/Login';
 import type { VideoSession } from './types';
-import { useChatHistory } from './hooks/useChatHistory';
 
 function App() {
-  // --- Auth State ---
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-
-  // --- App State ---
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
   const [currentSession, setCurrentSession] = useState<VideoSession>({
-    id: 'new',
-    videoUrl: null,
-    videoName: '',
-    hash: null,
-    status: 'idle',
+    id: 'new-session', 
+    videoUrl: null, 
+    videoName: '', 
+    hash: null, 
+    status: 'idle', 
     events: []
   });
 
-  const { chats, createSession, saveMessage, loadMessages } = useChatHistory();
-
-  const handleNewChat = () => {
-    setCurrentSession({
-      id: 'new',
-      videoUrl: null,
-      videoName: '',
-      hash: null,
-      status: 'idle',
-      events: []
-    });
-  };
-
-  const handleSelectChat = async (chatId: string) => {
-    const chat = chats.find(c => c.id === chatId);
-    if (chat) {
-      setCurrentSession({
-        id: chat.id,
-        videoUrl: chat.previewUrl || null,
-        videoName: chat.videoName || '',
-        hash: chat.videoHash || null,
-        status: 'ready',
-        events: []
-      });
-
-      const historyEvents = await loadMessages(chatId);
-      setCurrentSession(prev => {
-        if (prev.id === chatId) {
-          return { ...prev, events: historyEvents };
-        }
-        return prev;
-      });
-    }
-  };
-
+  // Listen for auth state changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -71,8 +34,13 @@ function App() {
 
   const handleLogout = () => {
     signOut(auth);
-    // Optional: Reset session state on logout
-    handleNewChat();
+    // Reset app state
+    setCurrentSession(prev => ({ 
+      ...prev, 
+      status: 'idle', 
+      videoUrl: null, 
+      events: [] 
+    }));
   };
 
   // --- VIEW 1: LOADING ---
@@ -89,7 +57,7 @@ function App() {
     return <Login />;
   }
 
-  // --- VIEW 3: MAIN APP ---
+  // --- VIEW 3: MAIN APP (No Verification Block) ---
   return (
     <div className="flex h-screen w-full bg-[#131314] text-gray-100 font-sans overflow-hidden">
       
@@ -106,7 +74,7 @@ function App() {
         </button>
       </div>
 
-      {/* Sidebar Container */}
+      {/* Sidebar */}
       <aside 
         className={`
           fixed md:relative z-40 h-full w-72 bg-[#1e1f20] border-r border-gray-700 transition-transform duration-300 ease-in-out
@@ -115,15 +83,9 @@ function App() {
           flex flex-col
         `}
       >
-        {/* Your Existing Sidebar Component */}
-        <Sidebar 
-          onNewChat={handleNewChat} 
-          chats={chats}
-          onSelectChat={handleSelectChat}
-          currentChatId={currentSession.id}
-        />
+        <Sidebar onNewChat={() => setCurrentSession(prev => ({ ...prev, status: 'idle', videoUrl: null, events: [] }))} />
         
-        {/* NEW: User Profile & Logout (Stays at bottom) */}
+        {/* User Profile Footer */}
         <div className="p-4 border-t border-gray-800 mt-auto bg-[#1e1f20]">
           <div className="flex items-center gap-3 mb-4 px-2">
             <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-xs border border-blue-500/30">
@@ -133,7 +95,15 @@ function App() {
               <div className="text-white font-medium truncate w-40" title={user.email || ''}>
                 {user.email}
               </div>
-              <div className="text-gray-500">Investigator</div>
+              <div className="flex items-center gap-2 text-gray-500">
+                <span>Investigator</span>
+                {/* Optional: Small badge just to let them know */}
+                {!user.emailVerified && (
+                  <span className="text-[10px] bg-yellow-500/10 text-yellow-500 px-1.5 rounded border border-yellow-500/20" title="Email not verified">
+                    Unverified
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           <button 
@@ -146,7 +116,7 @@ function App() {
         </div>
       </aside>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <main className="flex-1 flex flex-col h-full relative pt-14 md:pt-0">
         {isSidebarOpen && (
           <div 
@@ -156,20 +126,9 @@ function App() {
         )}
 
         {currentSession.status === 'idle' ? (
-          <ChatInterface 
-            session={currentSession} 
-            setSession={setCurrentSession}
-            onSaveSession={async (prompt, events, downloadUrl) => {
-              let chatId = currentSession.id;
-              if (chatId === 'new') {
-                chatId = await createSession({ ...currentSession, videoUrl: downloadUrl });
-                setCurrentSession(prev => ({ ...prev, id: chatId }));
-              }
-              await saveMessage(chatId, prompt, events);
-            }}
-          />
+          <ChatInterface session={currentSession} setSession={setCurrentSession}/>
         ) : (
-          <AnalysisView session={currentSession} setSession={setCurrentSession} onBack={handleNewChat}/>
+          <AnalysisView session={currentSession} setSession={setCurrentSession} onBack={() => setCurrentSession(prev => ({ ...prev, status: 'idle' }))}/>
         )}
       </main>
     </div>

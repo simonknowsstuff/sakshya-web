@@ -2,35 +2,32 @@ import React, { useState } from 'react';
 import { 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
-  sendEmailVerification, 
-  signOut 
+  sendEmailVerification
 } from 'firebase/auth';
 import { auth } from '../lib/firebase';
 import { 
   Lock, Mail, Loader2, ShieldCheck, 
-  ArrowRight, CheckCircle2, Eye, EyeOff 
+  ArrowRight, Eye, EyeOff 
 } from 'lucide-react';
 
 const Login = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPass, setConfirmPass] = useState(''); // New State for confirmation
+  const [confirmPass, setConfirmPass] = useState('');
   
-  // Toggles for password visibility
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [verificationSent, setVerificationSent] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    // 1. Validation: Check if passwords match (Only for Sign Up)
+    // Passwords match check
     if (!isLogin && password !== confirmPass) {
       setError("Passwords do not match.");
       setLoading(false);
@@ -39,20 +36,15 @@ const Login = () => {
 
     try {
       if (isLogin) {
-        // --- LOGIN FLOW ---
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
-        const user = userCredential.user;
-
-        if (!user.emailVerified) {
-          await signOut(auth);
-          setError("Access Denied: Please verify your email address first.");
-        }
+        // --- LOGIN ---
+        // We just log them in. App.tsx will check if they are verified.
+        await signInWithEmailAndPassword(auth, email, password);
       } else {
-        // --- SIGN UP FLOW ---
+        // --- SIGN UP ---
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await sendEmailVerification(userCredential.user);
-        setVerificationSent(true);
-        await signOut(auth);
+        // We do NOT sign them out. 
+        // App.tsx will detect the new user, see they are unverified, and show the proper screen.
       }
     } catch (err: any) {
       console.error(err);
@@ -63,47 +55,16 @@ const Login = () => {
       } else if (err.code === 'auth/invalid-credential') {
         setError("Invalid email or password.");
       } else {
-        setError("Authentication failed. Please try again.");
+        setError("Authentication failed.");
       }
     } finally {
       setLoading(false);
     }
   };
 
-  // --- VIEW: Verification Sent ---
-  if (verificationSent) {
-    return (
-      <div className="min-h-screen bg-[#131314] flex flex-col items-center justify-center p-4 font-sans">
-        <div className="w-full max-w-md bg-[#1e1f20] border border-gray-800 rounded-2xl p-8 text-center">
-          <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle2 className="w-8 h-8 text-green-500" />
-          </div>
-          <h2 className="text-xl font-semibold text-white mb-2">Verification Email Sent</h2>
-          <p className="text-gray-400 text-sm mb-6">
-            We have sent a confirmation link to <span className="text-white font-medium">{email}</span>.
-            <br />Please check your inbox to activate your account.
-          </p>
-          <button 
-            onClick={() => {
-              setVerificationSent(false);
-              setIsLogin(true);
-              setPassword('');
-              setConfirmPass('');
-            }}
-            className="w-full bg-[#282a2c] hover:bg-[#323436] text-white py-3 rounded-lg text-sm font-medium transition-colors border border-gray-700"
-          >
-            Return to Login
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // --- VIEW: Main Form ---
   return (
     <div className="min-h-screen bg-[#131314] flex flex-col items-center justify-center p-4 font-sans">
       <div className="w-full max-w-md bg-[#1e1f20] border border-gray-800 rounded-2xl p-8 shadow-2xl">
-        
         <div className="flex flex-col items-center mb-8">
           <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center mb-4 border border-blue-500/20">
             <ShieldCheck className="w-6 h-6 text-blue-500" />
@@ -121,7 +82,6 @@ const Login = () => {
             </div>
           )}
 
-          {/* Email Field */}
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Email</label>
             <div className="relative">
@@ -137,7 +97,6 @@ const Login = () => {
             </div>
           </div>
 
-          {/* Password Field */}
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Password</label>
             <div className="relative">
@@ -160,7 +119,6 @@ const Login = () => {
             </div>
           </div>
 
-          {/* Confirm Password Field (Only for Sign Up) */}
           {!isLogin && (
             <div className="space-y-1 animate-fade-in">
               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Confirm Password</label>
