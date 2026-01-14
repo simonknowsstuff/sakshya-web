@@ -59,7 +59,7 @@ exports.getTimestampsFromGemini = onCall(
             );
         }
 
-        const { storageUri, userPrompt } = req.data;
+        const { storageUri, userPrompt, model: userModel } = req.data;
         if (!storageUri) {
             throw new HttpsError(
                 "invalid-argument", 
@@ -71,6 +71,21 @@ exports.getTimestampsFromGemini = onCall(
                 "invalid-argument", 
                 "The function must be called with a valid userPrompt."
             );
+        }
+
+        const allowedModels = ['gemini-2.5-flash', 'gemini-1.5-pro'];
+        if (userModel && !allowedModels.includes(userModel)) {
+            throw new HttpsError(
+                "invalid-argument",
+                "The specified model is not supported."
+            );
+        }
+
+        // If userModel is provided and valid, use it; otherwise, default to "gemini-2.5-flash"
+        if (userModel && allowedModels.includes(userModel)) {
+            model.model = userModel;
+        } else {
+            model.model = "gemini-2.5-flash";
         }
 
         try {

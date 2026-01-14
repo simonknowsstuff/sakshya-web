@@ -1,25 +1,49 @@
-import React, { useState, useRef } from 'react';
-import { Upload, X, FileVideo, ArrowUp, Loader2, AlertCircle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Upload, X, FileVideo, ArrowUp, Loader2, AlertCircle, Zap, Brain, ChevronUp } from 'lucide-react'; // Added ChevronUp
 import type { VideoSession } from '../types';
 import { httpsCallable } from 'firebase/functions';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'; // <--- Added getDownloadURL
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { functions, storage } from '../lib/firebase';
 import { useFileHash } from '../hooks/useFileHash';
 
 interface ChatInterfaceProps {
   session: VideoSession;
   setSession: React.Dispatch<React.SetStateAction<VideoSession>>;
-  // New Prop: Callback to save data to Firestore
   onSaveSession?: (prompt: string, events: any[], downloadUrl: string) => void; 
 }
+
+// Define available models with specific styling colors if needed
+const MODELS = [
+  { id: 'gemini-2.5-flash', name: 'Flash', description: 'Fast & Efficient', icon: Zap, color: 'text-yellow-400' },
+  { id: 'gemini-2.5-pro', name: 'Pro', description: 'Complex Reasoning', icon: Brain, color: 'text-purple-400' },
+];
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSaveSession }) => {
   const [prompt, setPrompt] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Model Selection State
+  const [selectedModelId, setSelectedModelId] = useState(MODELS[0].id);
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false); // Toggle for custom dropdown
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null); // To detect clicks outside
   const { isHashing, generateHash } = useFileHash();
+
+  // Helper: Get current model object
+  const currentModel = MODELS.find(m => m.id === selectedModelId) || MODELS[0];
+
+  // Close dropdown if clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsModelMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -44,11 +68,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
 
     try {
       setErrorMsg(null);
+      setIsModelMenuOpen(false); // Close menu if open
 
       // 1. Generate Hash
       const hash = await generateHash(selectedFile);
-      
-      // Temporary Blob URL for immediate UI feedback (while uploading)
       const tempBlobUrl = URL.createObjectURL(selectedFile);
 
       setSession(prev => ({
@@ -62,33 +85,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
 
       // 2. Upload to Firebase Storage
       const storageRef = ref(storage, `evidence/${hash}.mp4`);
-      
       console.log("Step 1: Uploading to Storage...");
       await uploadBytes(storageRef, selectedFile);
       
-      // 3. GET PERMANENT DOWNLOAD URL (The Fix)
-      // Now that upload is done, get the https:// link
+      // 3. Get Permanent URL
       const permanentUrl = await getDownloadURL(storageRef);
 
-      // Update session with the permanent URL immediately
       setSession(prev => ({
         ...prev,
-        videoUrl: permanentUrl // <--- Swapping Blob for Real URL
+        videoUrl: permanentUrl 
       }));
 
-      // 4. Construct gs:// URI for Gemini
+      // 4. Construct gs:// URI
       const bucketName = storageRef.bucket; 
       const gcsUri = `gs://${bucketName}/evidence/${hash}.mp4`;
 
-      // Update State: ANALYZING
       setSession(prev => ({ ...prev, status: 'analyzing' }));
-      console.log("Step 2: Calling Gemini...");
+      console.log(`Step 2: Calling Gemini (${selectedModelId})...`);
 
       // 5. Call Cloud Function
       const getTimestamps = httpsCallable(functions, 'getTimestampsFromGemini');
       const response = await getTimestamps({ 
         storageUri: gcsUri, 
-        userPrompt: prompt 
+        userPrompt: prompt,
+        model: selectedModelId
       });
 
       // 6. Handle Results
@@ -98,8 +118,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
         const formattedEvents = data.timestamps.map((t: any) => ({
           fromTimestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from),
           toTimestamp: parseTimestampToSeconds(t.end || t.to),
-          summary: t.summary || "Event Detected",
-          confidence: 1.0 
+          description: t.description || "Event Detected",
+          confidence: t.confidence || 1.0 
         }));
 
         setSession(prev => ({
@@ -108,9 +128,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
           events: formattedEvents
         }));
 
-        // 7. SAVE TO FIRESTORE (Using the Prop)
         if (onSaveSession) {
-          // We pass the permanentUrl so the DB stores the correct link
           onSaveSession(prompt, formattedEvents, permanentUrl);
         }
       } else {
@@ -165,9 +183,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
                 type="button" 
                 onClick={() => {
                   setSelectedFile(null);
-                  if (fileInputRef.current) {
-                    fileInputRef.current.value = '';
-                  }
+                  if (fileInputRef.current) fileInputRef.current.value = '';
                 }}
                 className="hover:text-red-400 ml-1"
               >
@@ -191,21 +207,76 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
             />
             
             <div className="flex justify-between items-center mt-2">
-              <input
-                type="file"
-                accept="video/*"
-                ref={fileInputRef}
-                onChange={handleFileSelect}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 rounded-full transition-colors"
-                title="Upload Video"
-              >
-                <Upload className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <input
+                    type="file"
+                    accept="video/*"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    className="hidden"
+                />
+                
+                {/* Upload Button */}
+                <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 rounded-full transition-colors"
+                    title="Upload Video"
+                >
+                    <Upload className="w-5 h-5" />
+                </button>
+
+                {/* --- CUSTOM MODEL SELECTOR --- */}
+                <div className="relative" ref={dropdownRef}>
+                    {/* Trigger Button */}
+                    <button
+                        type="button"
+                        onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+                        className="flex items-center gap-2 bg-[#282a2c] hover:bg-[#323436] border border-gray-700 rounded-full py-1.5 pl-3 pr-3 transition-colors text-xs font-medium text-gray-300"
+                    >
+                        {/* Dynamic Icon */}
+                        <currentModel.icon className={`w-3.5 h-3.5 ${currentModel.color}`} />
+                        <span>{currentModel.name}</span>
+                        <ChevronUp className={`w-3 h-3 text-gray-500 transition-transform ${isModelMenuOpen ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {/* Dropdown Menu (Popup) */}
+                    {isModelMenuOpen && (
+                        <div className="absolute bottom-full left-0 mb-2 w-48 bg-[#282a2c] border border-gray-700 rounded-xl shadow-xl overflow-hidden z-20 animate-fade-in-up">
+                            {MODELS.map((m) => (
+                                <button
+                                    key={m.id}
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedModelId(m.id);
+                                        setIsModelMenuOpen(false);
+                                    }}
+                                    className={`w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-[#323436] transition-colors
+                                        ${selectedModelId === m.id ? 'bg-[#323436]' : ''}
+                                    `}
+                                >
+                                    <div className={`p-1.5 rounded-lg bg-black/30 ${m.color}`}>
+                                        <m.icon className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <div className={`text-sm font-medium ${selectedModelId === m.id ? 'text-white' : 'text-gray-300'}`}>
+                                            {m.name}
+                                        </div>
+                                        <div className="text-[10px] text-gray-500 leading-none mt-0.5">
+                                            {m.description}
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Selection Indicator */}
+                                    {selectedModelId === m.id && (
+                                        <div className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+              </div>
 
               <button
                 type="submit"
