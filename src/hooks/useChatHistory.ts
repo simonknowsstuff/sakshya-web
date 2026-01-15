@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { 
-  collection, query, orderBy, addDoc, onSnapshot, serverTimestamp, doc, setDoc, getDocs
+  collection, query, orderBy, addDoc, onSnapshot, serverTimestamp, doc, setDoc, getDocs,deleteDoc
 } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth'; 
 import { db } from '../lib/firebase';
@@ -57,32 +57,47 @@ export const useChatHistory = () => {
     return chatRef.id;
   };
 
+  const fetchSaved=async(chatId:string)=>{
+    const user = auth.currentUser;
+    if (!user) return [];
+
+    try {
+      const savedRef = collection(db, `users/${user.uid}/chats/${chatId}/saved`);
+      const snapshot = await getDocs(savedRef);
+      
+      // Return array of { id: docId, ...eventData }
+      return snapshot.docs.map(doc => ({
+        docId: doc.id,
+        ...doc.data()
+      }));
+    } catch (error) {
+      console.error("Error fetching saved events:", error);
+      return [];
+    }
+  };
+
   const saveMessage = async (chatId: string, prompt: string, aiEvents: any[]) => {
     const user = auth.currentUser;
     if (!user) return;
 
     const messagesRef = collection(db, `users/${user.uid}/chats/${chatId}/messages`);
     
-    // 1. Save User Prompt
     await addDoc(messagesRef, {
       role: 'user',
       content: prompt,
       createdAt: serverTimestamp()
     });
 
-    // 2. Save AI Response (The Events)
     await addDoc(messagesRef, {
       role: 'assistant',
-      content: aiEvents, // This is an array of objects
+      content: aiEvents,
       createdAt: serverTimestamp()
     });
 
-    // Update Title
     const chatDocRef = doc(db, `users/${user.uid}/chats/${chatId}`);
     await setDoc(chatDocRef, { title: prompt }, { merge: true });
   };
 
-  // --- THE FIX IS HERE ---
   const loadMessages = async (chatId: string) => {
     const user = auth.currentUser;
     if (!user) return [];
@@ -92,14 +107,11 @@ export const useChatHistory = () => {
       const q = query(messagesRef, orderBy('createdAt', 'asc'));
       const snapshot = await getDocs(q);
 
-
       return snapshot.docs.map(doc => {
         const data = doc.data();
         return {
             id: doc.id,
-            // Convert 'assistant' -> 'ai' for the UI
             role: data.role === 'assistant' ? 'ai' : data.role,
-            // If user, content is text. If AI, content is events data.
             text: data.role === 'user' ? data.content : undefined, 
             events: data.role === 'assistant' ? data.content : undefined,
             createdAt: data.createdAt
@@ -112,5 +124,25 @@ export const useChatHistory = () => {
     }
   };
 
-  return { chats, loading, createSession, saveMessage, loadMessages };
+  const saveSpecificEvent = async (chatId: string, eventData: any) => {
+    const user = auth.currentUser;
+    if (!user) throw new Error("No user");
+
+    const savedRef = collection(db, `users/${user.uid}/chats/${chatId}/saved`);
+    const docRef = await addDoc(savedRef, {
+        ...eventData,
+        savedAt: serverTimestamp()
+    });
+    return docRef.id; // <--- Return the ID so UI can track it
+  };
+
+  const deleteSavedEvent = async (chatId: string, docId: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const docRef = doc(db, `users/${user.uid}/chats/${chatId}/saved/${docId}`);
+    await deleteDoc(docRef);
+  };
+
+  return { chats, loading, createSession, saveMessage, loadMessages, saveSpecificEvent,deleteSavedEvent,fetchSaved };
 };

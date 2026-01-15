@@ -46,7 +46,7 @@ if (typeof window !== 'undefined') {
   try {
     initializeAppCheck(app, {
       // Replace with your actual reCAPTCHA v3 Site Key
-      provider: new ReCaptchaV3Provider('6Ld1AkgsAAAAAG7NceW6CVzCL39cQxYHwypYkjJq'),
+      provider: new ReCaptchaV3Provider('6Lec-kssAAAAACED-B1My8rwGXSIUuGzt-T8oVp-'),
       
       // Auto-refresh tokens so long sessions don't get rejected
       isTokenAutoRefreshEnabled: true 

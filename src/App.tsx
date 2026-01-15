@@ -28,7 +28,7 @@ function App() {
     chatHistory: [] 
   });
   
-  const { chats, createSession, saveMessage, loadMessages } = useChatHistory();
+  const { chats, createSession, saveMessage, loadMessages, saveSpecificEvent, deleteSavedEvent,fetchSaved } = useChatHistory();
 
   const extractHashFromUrl = (url: string | null) => {
     if (!url) return null;
@@ -274,6 +274,15 @@ function App() {
             session={currentSession} 
             setSession={setCurrentSession} 
             onBack={() => setCurrentSession(prev => ({ ...prev, status: 'idle' }))} 
+            onSaveSingleEvent={async(event)=>{
+              return await saveSpecificEvent(currentSession.id,event);
+            }}
+            onDeleteSingleEvent={async(docId)=>{
+              return await deleteSavedEvent(currentSession.id,docId)
+            }}
+            onFetchSavedEvents={async()=>{
+              return await fetchSaved(currentSession.id);
+            }}
             onSaveEvents={ async (prompt, newEvents) => {
               await saveMessage(currentSession.id, prompt, newEvents);
               
