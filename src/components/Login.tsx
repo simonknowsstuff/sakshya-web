@@ -169,7 +169,7 @@ const Login = () => {
             className="text-sm text-gray-400 hover:text-white transition-colors flex items-center justify-center gap-2 mx-auto"
           >
             {isLogin ? (
-              <>Don't have an ID? <span className="text-blue-400">Request Access</span></>
+              <>Don't have an ID? <span className="text-blue-400">Sign Up</span></>
             ) : (
               <>Already registered? <span className="text-blue-400">Login here</span></>
             )}
