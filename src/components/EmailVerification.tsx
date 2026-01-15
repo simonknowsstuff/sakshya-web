@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Mail, Loader2, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
 import { sendEmailVerification, reload, signOut } from 'firebase/auth';
 import { User } from 'firebase/auth';

@@ -1,13 +1,12 @@
 // src/lib/firebase.ts
 import { initializeApp } from 'firebase/app';
-import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
-import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getFunctions } from 'firebase/functions';
+import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getAuth, connectAuthEmulator } from "firebase/auth";
+import { getAuth } from "firebase/auth";
 import { 
   initializeAppCheck, 
-  ReCaptchaV3Provider, 
-  CustomProvider 
+  ReCaptchaV3Provider
 } from 'firebase/app-check';
 
 // 1. Your Firebase Config (Copy from Console)
@@ -39,13 +38,13 @@ if (typeof window !== 'undefined') {
     // @ts-ignore - Global variable needed for Firebase SDK debug mode
     self.FIREBASE_APPCHECK_DEBUG_TOKEN = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN || true;
     console.log("Sakshya AI: Using Manual Debug Token");
-    connectFunctionsEmulator(functions, 'localhost', 5001);
+    // connectFunctionsEmulator(functions, 'localhost', 5001);
     // connectFirestoreEmulator(db, 'localhost', 8080);
     // connectAuthEmulator(auth, 'http://localhost:9099');
   }
 
   try {
-    const appCheck = initializeAppCheck(app, {
+    initializeAppCheck(app, {
       // Replace with your actual reCAPTCHA v3 Site Key
       provider: new ReCaptchaV3Provider('6Ld1AkgsAAAAAG7NceW6CVzCL39cQxYHwypYkjJq'),
       

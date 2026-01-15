@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, Video, Loader2 } from 'lucide-react';
+import { MessageSquare, Video } from 'lucide-react';
 
 // Define what a "Chat" looks like for the UI
 interface ChatItem {

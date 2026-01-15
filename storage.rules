@@ -1,12 +1,22 @@
 rules_version = '2';
-
-// Craft rules based on data in your Firestore database
-// allow write: if firestore.get(
-//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
 service firebase.storage {
   match /b/{bucket}/o {
+    
+    // 1. Default: Block everything else
     match /{allPaths=**} {
-      allow read, write: if true; // true set ONLY for local testing
+      allow read, write: if false;
+    }
+
+    // 2. Evidence Folder: Secure Access
+    match /evidence/{fileName} {
+      
+      // READ: Allow only logged-in users to view videos
+      allow read: if request.auth != null;
+      
+      // WRITE: Strict checks for uploads
+      allow write: if request.auth != null                   // Must be logged in
+                   && request.resource.size < 700 * 1024 * 1024 // Max size: 700MB
+                   && request.resource.contentType.matches('video/.*'); // Must be a video file
     }
   }
 }

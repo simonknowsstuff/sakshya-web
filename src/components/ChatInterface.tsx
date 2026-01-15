@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Upload, X, FileVideo, ArrowUp, Loader2, AlertCircle, 
-  MessageSquare, User, Bot, PlayCircle, ChevronRight,
+  User, Bot, PlayCircle, ChevronRight,
   Zap, Brain, ChevronUp 
 } from 'lucide-react';
 import type { VideoSession, ChatMessage } from '../types';
