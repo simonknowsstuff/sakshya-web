@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Menu, LogOut } from 'lucide-react';
-import { onAuthStateChanged, User, signOut } from 'firebase/auth';
+import { onAuthStateChanged, User, signOut, applyActionCode, reload } from 'firebase/auth';
 import { auth, storage } from './lib/firebase';
 import { useChatHistory } from './hooks/useChatHistory';
 
@@ -8,12 +8,14 @@ import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import AnalysisView from './components/AnalysisView';
 import Login from './components/Login';
+import EmailVerification from './components/EmailVerification';
 import type { VideoSession, ChatMessage } from './types';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [verificationRefresh, setVerificationRefresh] = useState(false);
   
   const [currentSession, setCurrentSession] = useState<VideoSession>({
     id: 'new-session', 
@@ -113,6 +115,43 @@ function App() {
   };
 
   useEffect(() => {
+    // Handle email action links (verify email, password reset, etc.)
+    const handleEmailAction = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const mode = params.get('mode');
+      const oobCode = params.get('oobCode');
+
+      if (mode === 'verifyEmail' && oobCode) {
+        console.log('Processing email verification link...');
+        try {
+          // Apply the verification action code
+          await applyActionCode(auth, oobCode);
+          
+          // Reload the current user to update their verification status
+          if (auth.currentUser) {
+            await reload(auth.currentUser);
+            console.log('Email verified successfully!');
+          }
+          
+          // Clean up the URL so it doesn't show the verification code
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } catch (error: any) {
+          console.error('Error applying verification code:', error);
+          if (error.code === 'auth/expired-action-code') {
+            alert('This verification link has expired. Please request a new one.');
+          } else if (error.code === 'auth/invalid-action-code') {
+            alert('Invalid verification link. Please check your email again.');
+          }
+          // Still clean up the URL even on error
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    };
+
+    handleEmailAction();
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       setAuthLoading(false);
@@ -135,6 +174,15 @@ function App() {
 
   if (!user) {
     return <Login />;
+  }
+
+  if (!user.emailVerified) {
+    return (
+      <EmailVerification 
+        user={user}
+        onVerified={() => setVerificationRefresh(!verificationRefresh)}
+      />
+    );
   }
 
   return (

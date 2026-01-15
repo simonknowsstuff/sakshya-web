@@ -40,8 +40,8 @@ if (typeof window !== 'undefined') {
     self.FIREBASE_APPCHECK_DEBUG_TOKEN = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN || true;
     console.log("Sakshya AI: Using Manual Debug Token");
     connectFunctionsEmulator(functions, 'localhost', 5001);
-    connectFirestoreEmulator(db, 'localhost', 8080);
-    connectAuthEmulator(auth, 'http://localhost:9099');
+    // connectFirestoreEmulator(db, 'localhost', 8080);
+    // connectAuthEmulator(auth, 'http://localhost:9099');
   }
 
   try {
