@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MessageSquare, Video, Settings, Trash2, AlertTriangle, X, Check } from 'lucide-react';
+import { MessageSquare, Video, Settings, Trash2, AlertTriangle, X, Check, LogOut } from 'lucide-react';
 
 interface ChatItem {
   id: string;
@@ -160,9 +160,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         <button onClick={onOpenSettings} className="flex items-center gap-2 w-full text-gray-400 hover:text-white hover:bg-[#282a2c] py-2 px-2 rounded-lg transition-all text-sm">
           <Settings className="w-4 h-4" /><span>Manage Account</span>
         </button>
-        <button onClick={onLogout} className="flex items-center gap-2 w-full text-gray-400 hover:text-red-400 hover:bg-red-900/10 py-2 px-2 rounded-lg transition-all text-sm group">
-          <span className="group-hover:text-red-400">Sign Out</span>
-        </button>
+        <button 
+  onClick={onLogout} 
+  className="flex items-center gap-2 w-full text-gray-400 hover:text-red-400 hover:bg-red-900/10 py-2 px-2 rounded-lg transition-all text-sm group"
+>
+  <LogOut className="w-4 h-4 group-hover:text-red-400" />
+  <span className="group-hover:text-red-400">Sign Out</span>
+</button>
       </div>
     </div>
   );
