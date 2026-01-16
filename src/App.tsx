@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Menu, LogOut, Loader2 } from 'lucide-react';
+import { Menu, LogOut } from 'lucide-react';
 import { onAuthStateChanged, User, signOut, applyActionCode, reload } from 'firebase/auth';
 import { auth, storage } from './lib/firebase';
 import { useChatHistory } from './hooks/useChatHistory';
-import { useAccountManagement } from './hooks/useAccountManagement'; // <--- NEW IMPORT
 
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import AnalysisView from './components/AnalysisView';
 import Login from './components/Login';
 import EmailVerification from './components/EmailVerification';
-import AccountSettings from './components/AccountSettings';
+import AccountSettings from './components/AccountSettings'; 
 import type { VideoSession, ChatMessage } from './types';
 
 function App() {
@@ -18,23 +17,14 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [verificationRefresh, setVerificationRefresh] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(false); 
   
-  // Account Management Hook
-  const { checkDeletionVerify, processing: isDeleting, status: deleteStatus } = useAccountManagement();
-
   const [currentSession, setCurrentSession] = useState<VideoSession>({
     id: 'new-session', videoUrl: null, videoName: '', hash: null, status: 'idle', events: [], gcsUri: undefined, chatHistory: [] 
   });
   
   const { chats, createSession, saveMessage, loadMessages, saveSpecificEvent, deleteSavedEvent, fetchSaved } = useChatHistory();
 
-  // --- 1. HANDLE DELETION LINK VERIFICATION ---
-  useEffect(() => {
-    checkDeletionVerify();
-  }, []); // Run once on mount
-
-  // --- 2. EXISTING HANDLERS ---
   const extractHashFromUrl = (url: string | null) => {
     if (!url) return null;
     const match = url.match(/evidence%2F(.*?)\.mp4/);
@@ -99,7 +89,6 @@ function App() {
     }
   };
 
-  // Keep existing email verification Logic
   useEffect(() => {
     const handleEmailAction = async () => {
       const params = new URLSearchParams(window.location.search);
@@ -129,34 +118,9 @@ function App() {
     handleNewChat();
   };
 
-  // --- RENDERING ---
+  if (authLoading) return <div className="h-screen w-full bg-[#131314] flex items-center justify-center"><div className="w-2 h-2 bg-blue-500 rounded-full animate-ping" /></div>;
 
-  // 1. DELETION LOADING SCREEN
-  if (isDeleting) {
-    return (
-      <div className="h-screen w-full bg-[#131314] flex flex-col items-center justify-center p-4">
-        <div className="flex flex-col items-center space-y-4">
-          <Loader2 className="w-12 h-12 text-red-500 animate-spin" />
-          <div className="text-center">
-             <h2 className="text-xl font-semibold text-white">Security Verification Complete</h2>
-             <p className="text-gray-400 mt-2">{deleteStatus}</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (authLoading) {
-    return (
-      <div className="h-screen w-full bg-[#131314] flex items-center justify-center">
-        <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return <Login />;
-  }
+  if (!user) return <Login />;
 
   if (!user.emailVerified) {
     return (
@@ -177,7 +141,6 @@ function App() {
         />
       )}
 
-      {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 w-full h-14 bg-[#1e1f20] border-b border-gray-700 flex items-center justify-between px-4 z-50">
         <div className="flex items-center">
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
@@ -185,9 +148,7 @@ function App() {
           </button>
           <span className="ml-4 font-semibold text-lg tracking-tight">Sakshya AI</span>
         </div>
-        <button onClick={() => setShowSettings(true)}>
-           {/* Mobile settings trigger */}
-        </button>
+        <button onClick={() => setShowSettings(true)}></button>
       </div>
 
       <aside 
@@ -210,12 +171,7 @@ function App() {
       </aside>
 
       <main className="flex-1 flex flex-col h-full relative pt-14 md:pt-0">
-        {isSidebarOpen && (
-          <div 
-            className="fixed inset-0 bg-black/50 z-30 md:hidden"
-            onClick={() => setIsSidebarOpen(false)}
-          />
-        )}
+        {isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 md:hidden" onClick={() => setIsSidebarOpen(false)} />}
 
         {currentSession.status === 'idle' ? (
           <ChatInterface 
