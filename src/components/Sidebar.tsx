@@ -46,7 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full p-4 relative">
+    <div className="flex flex-col h-full p-4 pt-20 md:pt-4 relative">
       {/* Header */}
       <div className="mb-6">
         <h1 className="text-xl font-bold text-blue-400 mb-1">Sakshya AI</h1>
