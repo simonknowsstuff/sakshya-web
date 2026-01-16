@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Menu, LogOut } from 'lucide-react';
+import { Menu, LogOut, Loader2 } from 'lucide-react';
 import { onAuthStateChanged, User, signOut, applyActionCode, reload } from 'firebase/auth';
 import { auth, storage } from './lib/firebase';
 import { useChatHistory } from './hooks/useChatHistory';
+import { useAccountManagement } from './hooks/useAccountManagement'; // <--- NEW IMPORT
 
 import Sidebar from './components/Sidebar';
 import ChatInterface from './components/ChatInterface';
 import AnalysisView from './components/AnalysisView';
 import Login from './components/Login';
 import EmailVerification from './components/EmailVerification';
+import AccountSettings from './components/AccountSettings';
 import type { VideoSession, ChatMessage } from './types';
 
 function App() {
@@ -16,20 +18,23 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [verificationRefresh, setVerificationRefresh] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   
+  // Account Management Hook
+  const { checkDeletionVerify, processing: isDeleting, status: deleteStatus } = useAccountManagement();
+
   const [currentSession, setCurrentSession] = useState<VideoSession>({
-    id: 'new-session', 
-    videoUrl: null, 
-    videoName: '', 
-    hash: null, 
-    status: 'idle', 
-    events: [],
-    gcsUri: undefined,
-    chatHistory: [] 
+    id: 'new-session', videoUrl: null, videoName: '', hash: null, status: 'idle', events: [], gcsUri: undefined, chatHistory: [] 
   });
   
-  const { chats, createSession, saveMessage, loadMessages, saveSpecificEvent, deleteSavedEvent,fetchSaved } = useChatHistory();
+  const { chats, createSession, saveMessage, loadMessages, saveSpecificEvent, deleteSavedEvent, fetchSaved } = useChatHistory();
 
+  // --- 1. HANDLE DELETION LINK VERIFICATION ---
+  useEffect(() => {
+    checkDeletionVerify();
+  }, []); // Run once on mount
+
+  // --- 2. EXISTING HANDLERS ---
   const extractHashFromUrl = (url: string | null) => {
     if (!url) return null;
     const match = url.match(/evidence%2F(.*?)\.mp4/);
@@ -38,29 +43,19 @@ function App() {
 
   const handleNewChat = () => {
     setCurrentSession({
-      id: 'new',
-      videoUrl: null,
-      videoName: '',
-      hash: null,
-      status: 'idle',
-      events: [],
-      chatHistory: [],
-      gcsUri: undefined
+      id: 'new', videoUrl: null, videoName: '', hash: null, status: 'idle', events: [], chatHistory: [], gcsUri: undefined
     });
   };
 
   const handleSelectChat = async (chatId: string) => {
     const chat = chats.find(c => c.id === chatId);
     if (chat) {
-      
       const finalHash = chat.videoHash || extractHashFromUrl(chat.previewUrl);
       let reconstructedGcsUri = undefined;
-      
       if (finalHash) {
          const bucketName = storage.app.options.storageBucket;
          reconstructedGcsUri = `gs://${bucketName}/evidence/${finalHash}.mp4`;
       }
-
       setCurrentSession({
         id: chat.id,
         videoUrl: chat.previewUrl || null,
@@ -71,32 +66,24 @@ function App() {
         chatHistory: [], 
         gcsUri: reconstructedGcsUri 
       });
-
       const rawMessages = await loadMessages(chatId);
       
-      // --- FIX: ROBUST MAPPING LOGIC ---
       const formattedMessages: ChatMessage[] = rawMessages.map((msg: any) => {
-        // 1. Determine Role (Default to 'user', but if it has events/analysis, it's 'ai')
         let role = msg.role;
         if (!role) {
             if (msg.events || msg.analysisData) role = 'ai';
             else role = 'user';
         }
-
-        // 2. Determine Text Content (Check common field names)
         let content = msg.text || msg.prompt || msg.message || msg.content;
         if (!content && role === 'ai') {
-            // Fallback for AI messages that might only have event data
             const eventCount = (msg.events || msg.analysisData?.events || []).length;
             content = msg.summary || msg.description || msg.analysisData?.summary || `Found ${eventCount} events.`;
         }
-
         return {
             id: msg.id || Math.random().toString(36).substr(2, 9),
             role: role as 'user' | 'ai',
             text: content || "", 
             timestamp: msg.createdAt?.toMillis ? msg.createdAt.toMillis() : (msg.timestamp || Date.now()),
-            // Map analysis data if present
             analysisData: msg.analysisData || (msg.events ? {
                 events: msg.events,
                 summary: msg.summary || "Analysis Results",
@@ -106,48 +93,26 @@ function App() {
       });
 
       setCurrentSession(prev => {
-        if (prev.id === chatId) {
-          return { ...prev, chatHistory: formattedMessages };
-        }
+        if (prev.id === chatId) { return { ...prev, chatHistory: formattedMessages }; }
         return prev;
       });
     }
   };
 
+  // Keep existing email verification Logic
   useEffect(() => {
-    // Handle email action links (verify email, password reset, etc.)
     const handleEmailAction = async () => {
       const params = new URLSearchParams(window.location.search);
       const mode = params.get('mode');
       const oobCode = params.get('oobCode');
-
       if (mode === 'verifyEmail' && oobCode) {
-        console.log('Processing email verification link...');
         try {
-          // Apply the verification action code
           await applyActionCode(auth, oobCode);
-          
-          // Reload the current user to update their verification status
-          if (auth.currentUser) {
-            await reload(auth.currentUser);
-            console.log('Email verified successfully!');
-          }
-          
-          // Clean up the URL so it doesn't show the verification code
+          if (auth.currentUser) await reload(auth.currentUser);
           window.history.replaceState({}, document.title, window.location.pathname);
-        } catch (error: any) {
-          console.error('Error applying verification code:', error);
-          if (error.code === 'auth/expired-action-code') {
-            alert('This verification link has expired. Please request a new one.');
-          } else if (error.code === 'auth/invalid-action-code') {
-            alert('Invalid verification link. Please check your email again.');
-          }
-          // Still clean up the URL even on error
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }
+        } catch (error: any) {}
       }
     };
-
     handleEmailAction();
   }, []);
 
@@ -163,6 +128,23 @@ function App() {
     signOut(auth);
     handleNewChat();
   };
+
+  // --- RENDERING ---
+
+  // 1. DELETION LOADING SCREEN
+  if (isDeleting) {
+    return (
+      <div className="h-screen w-full bg-[#131314] flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center space-y-4">
+          <Loader2 className="w-12 h-12 text-red-500 animate-spin" />
+          <div className="text-center">
+             <h2 className="text-xl font-semibold text-white">Security Verification Complete</h2>
+             <p className="text-gray-400 mt-2">{deleteStatus}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (authLoading) {
     return (
@@ -188,6 +170,14 @@ function App() {
   return (
     <div className="flex h-screen w-full bg-[#131314] text-gray-100 font-sans overflow-hidden">
       
+      {showSettings && (
+        <AccountSettings 
+          user={user} 
+          onClose={() => setShowSettings(false)} 
+        />
+      )}
+
+      {/* Mobile Header */}
       <div className="md:hidden fixed top-0 left-0 w-full h-14 bg-[#1e1f20] border-b border-gray-700 flex items-center justify-between px-4 z-50">
         <div className="flex items-center">
           <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
@@ -195,8 +185,8 @@ function App() {
           </button>
           <span className="ml-4 font-semibold text-lg tracking-tight">Sakshya AI</span>
         </div>
-        <button onClick={handleLogout}>
-          <LogOut className="w-5 h-5 text-gray-400" />
+        <button onClick={() => setShowSettings(true)}>
+           {/* Mobile settings trigger */}
         </button>
       </div>
 
@@ -212,31 +202,11 @@ function App() {
           onNewChat={handleNewChat} 
           chats={chats}
           onSelectChat={handleSelectChat}
+          onOpenSettings={() => setShowSettings(true)}
           currentChatId={currentSession.id}
+          userEmail={user.email}
+          onLogout={handleLogout}
         />
-        
-        <div className="p-4 border-t border-gray-800 mt-auto bg-[#1e1f20]">
-          <div className="flex items-center gap-3 mb-4 px-2">
-            <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-xs border border-blue-500/30">
-              {user.email?.charAt(0).toUpperCase() || 'U'}
-            </div>
-            <div className="text-xs overflow-hidden">
-              <div className="text-white font-medium truncate w-40" title={user.email || ''}>
-                {user.email}
-              </div>
-              <div className="flex items-center gap-2 text-gray-500">
-                <span>Investigator</span>
-              </div>
-            </div>
-          </div>
-          <button 
-            onClick={handleLogout}
-            className="flex items-center gap-2 w-full text-gray-400 hover:text-red-400 hover:bg-red-900/10 py-2 px-2 rounded-lg transition-all text-sm group"
-          >
-            <LogOut className="w-4 h-4 group-hover:text-red-400" />
-            <span>Sign Out</span>
-          </button>
-        </div>
       </aside>
 
       <main className="flex-1 flex flex-col h-full relative pt-14 md:pt-0">
@@ -253,17 +223,8 @@ function App() {
             setSession={setCurrentSession}
             onSaveSession={async (prompt, events, downloadUrl, modelId, videoName, videoHash) => {
               let chatId = currentSession.id;
-              
               if (chatId === 'new' || chatId === 'new-session') {
-                chatId = await createSession(
-                  { 
-                    ...currentSession, 
-                    videoUrl: downloadUrl,
-                    videoName: videoName, 
-                    hash: videoHash       
-                  },
-                  modelId
-                );
+                chatId = await createSession({ ...currentSession, videoUrl: downloadUrl, videoName, hash: videoHash }, modelId);
                 setCurrentSession(prev => ({ ...prev, id: chatId }));
               }
               await saveMessage(chatId, prompt, events);
@@ -274,18 +235,11 @@ function App() {
             session={currentSession} 
             setSession={setCurrentSession} 
             onBack={() => setCurrentSession(prev => ({ ...prev, status: 'idle' }))} 
-            onSaveSingleEvent={async(event)=>{
-              return await saveSpecificEvent(currentSession.id,event);
-            }}
-            onDeleteSingleEvent={async(docId)=>{
-              return await deleteSavedEvent(currentSession.id,docId)
-            }}
-            onFetchSavedEvents={async()=>{
-              return await fetchSaved(currentSession.id);
-            }}
+            onSaveSingleEvent={async(event) => saveSpecificEvent(currentSession.id, event)}
+            onDeleteSingleEvent={async(docId) => deleteSavedEvent(currentSession.id, docId)}
+            onFetchSavedEvents={async() => fetchSaved(currentSession.id)}
             onSaveEvents={ async (prompt, newEvents) => {
               await saveMessage(currentSession.id, prompt, newEvents);
-              
               setCurrentSession(prev => ({
                 ...prev,
                 chatHistory: [

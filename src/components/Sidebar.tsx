@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquare, Video } from 'lucide-react';
+import { MessageSquare, Video, Settings } from 'lucide-react';
 
 // Define what a "Chat" looks like for the UI
 interface ChatItem {
@@ -12,11 +12,17 @@ interface ChatItem {
 interface SidebarProps {
   onNewChat: () => void;
   onSelectChat: (chatId: string) => void;
+  onOpenSettings: () => void; // <--- NEW PROP
   chats: ChatItem[];
   currentChatId?: string;
+  userEmail?: string | null;
+  onLogout: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onNewChat, onSelectChat, chats = [], currentChatId }) => {
+const Sidebar: React.FC<SidebarProps> = ({ 
+  onNewChat, onSelectChat, onOpenSettings, 
+  chats = [], currentChatId, userEmail, onLogout 
+}) => {
   return (
     <div className="flex flex-col h-full p-4">
       {/* Header */}
@@ -34,7 +40,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewChat, onSelectChat, chats = [], 
       </button>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto custom-scrollbar">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-4 px-2">
           Recent Cases
         </p>
@@ -73,11 +79,37 @@ const Sidebar: React.FC<SidebarProps> = ({ onNewChat, onSelectChat, chats = [], 
         </div>
       </div>
 
-      {/* User Footer (Optional) */}
-      <div className="mt-auto pt-4 border-t border-gray-800">
-        <div className="text-xs text-gray-600 text-center">
-            Secured by Firebase & Gemini
+      {/* User Footer */}
+      <div className="mt-auto pt-4 border-t border-gray-800 space-y-2">
+        <div className="flex items-center gap-3 px-2 mb-2">
+            <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 font-bold text-xs border border-blue-500/30">
+              {userEmail?.charAt(0).toUpperCase() || 'U'}
+            </div>
+            <div className="text-xs overflow-hidden">
+              <div className="text-white font-medium truncate w-40" title={userEmail || ''}>
+                {userEmail}
+              </div>
+              <div className="text-gray-500">Investigator</div>
+            </div>
         </div>
+
+        {/* SETTINGS BUTTON */}
+        <button 
+          onClick={onOpenSettings}
+          className="flex items-center gap-2 w-full text-gray-400 hover:text-white hover:bg-[#282a2c] py-2 px-2 rounded-lg transition-all text-sm"
+        >
+          <Settings className="w-4 h-4" />
+          <span>Manage Account</span>
+        </button>
+
+        {/* LOGOUT BUTTON */}
+        <button 
+          onClick={onLogout}
+          className="flex items-center gap-2 w-full text-gray-400 hover:text-red-400 hover:bg-red-900/10 py-2 px-2 rounded-lg transition-all text-sm group"
+        >
+          {/* Using a logout icon here or text */}
+          <span className="group-hover:text-red-400">Sign Out</span>
+        </button>
       </div>
     </div>
   );
