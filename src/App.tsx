@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Menu, LogOut, Upload } from 'lucide-react';
+import { Menu, Upload } from 'lucide-react';
 import { onAuthStateChanged, User, signOut, applyActionCode, reload } from 'firebase/auth';
 import { auth, storage } from './lib/firebase';
 import { useChatHistory } from './hooks/useChatHistory';
