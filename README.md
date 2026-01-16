@@ -1,75 +1,32 @@
-# React + TypeScript + Vite
+# Sakshya AI
+Sakshya AI is an automated evidence retrieval system designed to handle the massive influx of video data mandated by India's new BNSS laws. By leveraging Gemini, the platform "watches" and indexes hours of raw CCTV or mobile footage, allowing Investigation Officers to pinpoint specific visual events—like a "white SUV with a dent"—simply by describing them. This is powered by a Firebase backend that enables a zero-copy architecture, allowing us to stream gigabytes of high-definition video directly from Firebase Storage to the AI without the latency of downloading files to a server. Finally, we close the legal loop by auto-generating cryptographic SHA-256 hashes for every file, ensuring that the evidence is not just found quickly, but remains secure, tamper-proof, and legally admissible under BSA Section 63 standards.
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Running this project
+1. Clone and open the project in a folder.
+2. You will require web app check, email-password authentication, firebase storage and firestore in your firebase project. First add in a .env file with your firebase configuration:
+  ```
+  VITE_FIREBASE_API_KEY=your_api_key
+  VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
+  VITE_FIREBASE_PROJECT_ID=your_project_id
+  VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+  VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+  VITE_FIREBASE_APP_ID=your_app_id
+  VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
+  VITE_FIREBASE_APPCHECK_DEBUG_TOKEN=your_debug_token
+  ```
+and modify the ReCaptcha site key to your site key under `src/lib/firebase.ts`
 
-Currently, two official plugins are available:
+3. Run `npm install` followed by `npm run build`
+4. Open the displayed link in your browser.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Screenshots
+![Screenshot 1](screenshots/s1.png)
 
-## React Compiler
+![Screenshot 2](screenshots/s2.png)
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
+![Screenshot 3](screenshots/s3.png)
 
-Note: This will impact Vite dev & build performances.
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## Credits
+- Simon Binu
+- Seraphin J Raphy
+- Johan Abraham
