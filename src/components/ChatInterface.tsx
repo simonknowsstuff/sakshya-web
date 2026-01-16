@@ -13,7 +13,6 @@ import { useChatHistory } from '../hooks/useChatHistory';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-// Fix TS Interface for Saved Events
 interface SavedEvent extends TimelineEvent {
   docId: string;
 }
@@ -21,7 +20,10 @@ interface SavedEvent extends TimelineEvent {
 interface ChatInterfaceProps {
   session: VideoSession;
   setSession: React.Dispatch<React.SetStateAction<VideoSession>>;
-  onSaveSession?: (prompt: string, events: any[], downloadUrl: string, modelId: string, videoName: string, videoHash: string) => void; 
+  onSaveSession?: (prompt: string, events: any[], downloadUrl: string, modelId: string, videoName: string, videoHash: string) => void;
+  // GLOBAL DRAG & DROP PROPS
+  droppedFile?: File | null;
+  onFileAck?: () => void;
 }
 
 const MODELS = [
@@ -29,16 +31,15 @@ const MODELS = [
   { id: 'gemini-2.5-pro', name: 'Pro', description: 'Complex Reasoning', icon: Brain, color: 'text-purple-400' },
 ];
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSaveSession }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
+  session, setSession, onSaveSession, droppedFile, onFileAck 
+}) => {
   const [prompt, setPrompt] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState(MODELS[0].id);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
-  
-  // --- DRAG AND DROP STATE ---
-  const [isDragging, setIsDragging] = useState(false);
   
   // --- MEMO REPORT STATE ---
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
@@ -62,6 +63,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [session.chatHistory]);
 
+  // --- HANDLE DROPPED FILE FROM APP.TSX ---
+  useEffect(() => {
+    if (droppedFile) {
+      if (droppedFile.type.startsWith('video/')) {
+        validateAndSetFile(droppedFile);
+      } else {
+        setErrorMsg("Please upload a valid video file.");
+      }
+      // Acknowledge file reception to clear it from App state
+      if (onFileAck) onFileAck();
+    }
+  }, [droppedFile]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -72,7 +86,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // --- REPORT LOGIC (Keep existing) ---
+  // --- REPORT LOGIC ---
   useEffect(() => {
       if (isReportModalOpen && session.id) {
           const loadSaved = async () => {
@@ -200,14 +214,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
       setIsReportModalOpen(false);
   };
 
-  // --- FILE HANDLING WITH DRAG & DROP ---
-
   const validateAndSetFile = (file: File) => {
       // SIZE LIMIT: 700 MB
       const maxSize = 700 * 1024 * 1024;
-
       if (file.size > maxSize) {
-        // EMOJI REMOVED
         setErrorMsg("File size exceeds 700MB. Please upload a smaller video.");
         if (fileInputRef.current) fileInputRef.current.value = ''; 
         setSelectedFile(null);
@@ -221,31 +231,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
     if (e.target.files && e.target.files[0]) { 
       validateAndSetFile(e.target.files[0]);
     } 
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const file = e.dataTransfer.files[0];
-      if (file.type.startsWith('video/')) {
-        validateAndSetFile(file);
-      } else {
-        // EMOJI REMOVED
-        setErrorMsg("Please upload a valid video file.");
-      }
-    }
   };
 
   const parseTimestampToSeconds = (timeStr: string | number): number => { if (typeof timeStr === 'number') return timeStr; if (!timeStr) return 0; const parts = timeStr.toString().split(':').map(Number); if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]; if (parts.length === 2) return parts[0] * 60 + parts[1]; return parts[0]; };
@@ -299,6 +284,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
                   confidence: t.confidence || 0.95 
               }));
 
+              // DYNAMIC CONFIDENCE SCORE FIX
               const avgConfidence = formattedEvents.length > 0
                   ? formattedEvents.reduce((sum: number, e: any) => sum + (e.confidence || 0), 0) / formattedEvents.length
                   : 1.0;
@@ -333,12 +319,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
   const history = session.chatHistory || [];
 
   return (
-    <div 
-        className="flex flex-col h-full max-w-4xl mx-auto w-full px-4 relative"
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-    >
+    <div className="flex flex-col h-full max-w-4xl mx-auto w-full px-4 relative">
       
       {/* 1. HEADER */}
       {hasActiveVideo && (
@@ -353,7 +334,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
           </div>
       )}
 
-      {/* 2. MEMO GENERATION MODAL (Keep Existing) */}
+      {/* 2. MEMO MODAL */}
       {isReportModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
               <div className="bg-[#1e1f20] w-full max-w-2xl rounded-2xl border border-gray-700 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -393,18 +374,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
           </div>
       )}
 
-      {/* 3. CHAT HISTORY (Keep Same) */}
+      {/* 3. CHAT HISTORY */}
       <div className="flex-1 overflow-y-auto py-6 space-y-6 min-h-0 custom-scrollbar" ref={scrollRef}>
         {history.length === 0 && (
-            <div className={`flex flex-col items-center justify-center h-full space-y-6 transition-all duration-300 ${isDragging ? 'opacity-40 scale-95' : 'opacity-60'}`}>
+            <div className="flex flex-col items-center justify-center h-full space-y-6 opacity-60">
                 <div className="w-20 h-20 rounded-3xl bg-blue-500/10 flex items-center justify-center">
                     <div className="w-10 h-10 rounded-full bg-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.4)]" />
                 </div>
                 <div className="text-center">
                     <h2 className="text-2xl font-bold text-gray-200">Sakshya AI</h2>
-                    <p className="text-gray-500 mt-2">
-                        {isDragging ? "Drop video to upload" : "Upload footage. Start the investigation."}
-                    </p>
+                    <p className="text-gray-500 mt-2">Upload footage. Start the investigation.</p>
                 </div>
             </div>
         )}
@@ -419,21 +398,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
         ))}
       </div>
 
-      {/* 4. INPUT AREA (Modified for Drag) */}
+      {/* 4. INPUT AREA */}
       <div className="pb-6 pt-4 bg-[#131314]">
         {errorMsg && (<div className="mb-3 flex items-center gap-2 text-sm text-red-400 bg-red-500/10 p-3 rounded-lg border border-red-500/20 animate-fade-in"><AlertCircle className="w-4 h-4" />{errorMsg}</div>)}
         
-        {/* Drag Overlay */}
-        {isDragging && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/10 backdrop-blur-sm border-2 border-dashed border-blue-500 rounded-2xl mx-4 mb-6">
-                <div className="bg-[#1e1f20] px-6 py-3 rounded-full text-blue-400 font-medium shadow-xl flex items-center gap-2 animate-bounce">
-                    <Upload className="w-5 h-5" />
-                    Drop Video Here
-                </div>
-            </div>
-        )}
-
-        <form onSubmit={handleSubmit} className={`relative bg-[#1e1f20] rounded-2xl border transition-all shadow-2xl ${isDragging ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-700 focus-within:border-gray-600'}`}>
+        <form onSubmit={handleSubmit} className="relative bg-[#1e1f20] rounded-2xl border border-gray-700 focus-within:border-gray-600 transition-colors shadow-2xl">
+          {/* GREEN STATUS PILL FIX: Only show if !errorMsg */}
           {hasActiveVideo && !selectedFile && !errorMsg && (<div className="absolute -top-10 left-0 flex items-center gap-2 bg-[#1e1f20] border border-green-500/30 text-xs text-green-400 px-3 py-1.5 rounded-full shadow-sm max-w-[90vw]"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shrink-0" /><div className="flex items-center gap-2 min-w-0"><span className="text-gray-300 truncate font-medium max-w-[150px]" title={session.videoName}>{session.videoName}</span>{session.hash && (<span className="text-gray-500 font-mono border-l border-gray-700 pl-2 truncate cursor-help" title={`SHA-256: ${session.hash}`}>{session.hash.substring(0, 12)}...</span>)}</div></div>)}
           {selectedFile && (<div className="absolute -top-12 left-0 flex items-center gap-2 bg-[#282a2c] text-sm text-gray-200 px-3 py-2 rounded-lg border border-gray-700 shadow-sm animate-fade-in"><FileVideo className="w-4 h-4 text-blue-400" /><span className="truncate max-w-[200px]">{selectedFile.name}</span><button type="button" onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="hover:text-red-400 ml-1"><X className="w-4 h-4" /></button></div>)}
           

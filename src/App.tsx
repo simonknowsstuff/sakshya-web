@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Menu, LogOut } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Menu, LogOut, Upload } from 'lucide-react';
 import { onAuthStateChanged, User, signOut, applyActionCode, reload } from 'firebase/auth';
 import { auth, storage } from './lib/firebase';
 import { useChatHistory } from './hooks/useChatHistory';
@@ -19,11 +19,57 @@ function App() {
   const [verificationRefresh, setVerificationRefresh] = useState(false);
   const [showSettings, setShowSettings] = useState(false); 
   
+  // --- GLOBAL DRAG & DROP STATE ---
+  const [isDragging, setIsDragging] = useState(false);
+  const [droppedFile, setDroppedFile] = useState<File | null>(null);
+  const dragCounter = useRef(0);
+  
   const [currentSession, setCurrentSession] = useState<VideoSession>({
     id: 'new-session', videoUrl: null, videoName: '', hash: null, status: 'idle', events: [], gcsUri: undefined, chatHistory: [] 
   });
   
+  // Destructure deleteChat (Contributor's change)
   const { chats, createSession, saveMessage, loadMessages, saveSpecificEvent, deleteSavedEvent, fetchSaved, deleteChat } = useChatHistory();
+
+  // --- GLOBAL DRAG HANDLERS ---
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current -= 1;
+    if (dragCounter.current === 0) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounter.current = 0;
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      // Switch to Chat Interface immediately if dropping a new file
+      if (currentSession.status !== 'idle') {
+         setCurrentSession(prev => ({ ...prev, status: 'idle' }));
+      }
+      setDroppedFile(file);
+    }
+  };
 
   const extractHashFromUrl = (url: string | null) => {
     if (!url) return null;
@@ -132,12 +178,30 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen w-full bg-[#131314] text-gray-100 font-sans overflow-hidden">
+    <div 
+      // ATTACH GLOBAL DRAG LISTENERS
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      className="flex h-screen w-full bg-[#131314] text-gray-100 font-sans overflow-hidden relative"
+    >
       
+      {/* GLOBAL DRAG OVERLAY */}
+      {isDragging && (
+        <div className="absolute inset-0 z-[100] bg-blue-500/10 backdrop-blur-sm border-4 border-dashed border-blue-500 flex items-center justify-center animate-fade-in pointer-events-none">
+          <div className="bg-[#1e1f20] px-8 py-4 rounded-full text-blue-400 font-bold text-xl shadow-2xl flex items-center gap-3 animate-bounce">
+            <Upload className="w-8 h-8" />
+            Drop Evidence Video Anywhere
+          </div>
+        </div>
+      )}
+
       {showSettings && (
         <AccountSettings 
           user={user} 
           onClose={() => setShowSettings(false)} 
+          onResetSession={handleNewChat} // Re-added Reset Session for safety
         />
       )}
 
@@ -167,7 +231,7 @@ function App() {
           currentChatId={currentSession.id}
           userEmail={user.email}
           onLogout={handleLogout}
-          onDeleteChat={deleteChat}
+          onDeleteChat={deleteChat} // Preserved Contributor's Delete Logic
         />
       </aside>
 
@@ -178,6 +242,9 @@ function App() {
           <ChatInterface 
             session={currentSession} 
             setSession={setCurrentSession}
+            // PASS DROPPED FILE PROP
+            droppedFile={droppedFile}
+            onFileAck={() => setDroppedFile(null)}
             onSaveSession={async (prompt, events, downloadUrl, modelId, videoName, videoHash) => {
               let chatId = currentSession.id;
               if (chatId === 'new' || chatId === 'new-session') {

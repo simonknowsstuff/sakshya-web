@@ -5,28 +5,31 @@ import {
 } from 'lucide-react';
 import { 
   deleteUser, reauthenticateWithCredential, 
-  EmailAuthProvider, User 
+  EmailAuthProvider, User, signOut 
 } from 'firebase/auth';
 import { 
   collection, getDocs, deleteDoc, doc, writeBatch 
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, auth } from '../lib/firebase';
 
 interface AccountSettingsProps {
   user: User;
   onClose: () => void;
+  onResetSession: () => void;
 }
 
-const AccountSettings: React.FC<AccountSettingsProps> = ({ user, onClose }) => {
+const AccountSettings: React.FC<AccountSettingsProps> = ({ user, onClose, onResetSession }) => {
   const [password, setPassword] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'data' | 'account'>('data');
   const [progress, setProgress] = useState<string>('');
 
-  // --- HELPER: RECURSIVE DELETE LOGIC ---
   const deleteUserData = async () => {
     if (!user) return;
+    
+    // GHOST FILE FIX: Reset UI session first
+    onResetSession();
     
     setProgress('Scanning investigation files...');
     const batch = writeBatch(db);
@@ -36,7 +39,6 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ user, onClose }) => {
     let opCount = 0;
     const MAX_BATCH_SIZE = 450; 
 
-    // Helper to commit batch if full
     const commitIfFull = async () => {
       opCount++;
       if (opCount >= MAX_BATCH_SIZE) {
@@ -48,25 +50,21 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ user, onClose }) => {
     setProgress(`Found ${chatsSnapshot.size} cases. Cleaning up...`);
 
     for (const chatDoc of chatsSnapshot.docs) {
-      // 1. Delete Messages
       const msgsRef = collection(db, `users/${user.uid}/chats/${chatDoc.id}/messages`);
       const msgsSnap = await getDocs(msgsRef);
       for (const msg of msgsSnap.docs) {
         deleteDoc(msg.ref);
       }
 
-      // 2. Delete Saved Events
       const savedRef = collection(db, `users/${user.uid}/chats/${chatDoc.id}/saved`);
       const savedSnap = await getDocs(savedRef);
       for (const saved of savedSnap.docs) {
         deleteDoc(saved.ref);
       }
 
-      // 3. Delete Chat Doc
       deleteDoc(chatDoc.ref);
     }
 
-    // 4. Delete User Preferences Doc
     const userDocRef = doc(db, `users/${user.uid}`);
     deleteDoc(userDocRef);
 
@@ -80,38 +78,38 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ user, onClose }) => {
       return;
     }
 
-    // --- NEW: WARNING POPUP ---
+    // WARNING POPUP
     const warningMessage = activeTab === 'account' 
-      ? "Are you sure you wish to delete this account?" 
-      : "Are you sure to confirm data wipe?";
+      ? "Are you sure you wish to delete this account? This action is permanent." 
+      : "Are you sure to confirm data wipe? You will be signed out.";
       
-    // Stops execution if user clicks "Cancel"
     if (!window.confirm(warningMessage)) {
       return;
     }
-    // ---------------------------
     
     setIsDeleting(true);
     setError(null);
     setProgress('Verifying password...');
 
     try {
-      // 1. Re-authenticate User (Security Check)
       const credential = EmailAuthProvider.credential(user.email!, password);
       await reauthenticateWithCredential(user, credential);
 
+      // SET REDIRECT FLAG FOR LOGIN.TSX
+      localStorage.setItem('shouldShowSignup', 'true');
+
       if (activeTab === 'data') {
-        // --- OPTION A: DATA WIPE ONLY ---
+        // OPTION A: DATA WIPE
         await deleteUserData();
-        alert("All investigation data has been permanently deleted.");
+        setProgress('Signing out...');
+        await signOut(auth);
         onClose();
         window.location.reload(); 
       } else {
-        // --- OPTION B: DELETE ACCOUNT ---
-        await deleteUserData(); // Clean DB first
+        // OPTION B: DELETE ACCOUNT
+        await deleteUserData();
         setProgress('Deleting account access...');
-        await deleteUser(user); // Delete Auth User
-        // App.tsx auth listener will handle the redirect
+        await deleteUser(user);
       }
 
     } catch (err: any) {
@@ -123,6 +121,8 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ user, onClose }) => {
       } else {
         setError("Action failed: " + err.message);
       }
+      // If failed, don't redirect
+      localStorage.removeItem('shouldShowSignup');
     } finally {
       setIsDeleting(false);
     }
@@ -132,7 +132,6 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ user, onClose }) => {
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div className="bg-[#1e1f20] w-full max-w-md rounded-2xl border border-red-500/20 shadow-2xl overflow-hidden flex flex-col">
         
-        {/* Header */}
         <div className="p-6 border-b border-gray-800 bg-[#282a2c] flex justify-between items-center">
           <h2 className="text-lg font-semibold text-white flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 text-red-500" />
@@ -143,7 +142,6 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ user, onClose }) => {
           </button>
         </div>
 
-        {/* Tabs */}
         <div className="flex border-b border-gray-800">
           <button 
             onClick={() => { setActiveTab('data'); setError(null); }}
@@ -159,7 +157,6 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ user, onClose }) => {
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 space-y-6">
           <div className={`p-4 rounded-xl border ${activeTab === 'data' ? 'bg-blue-500/5 border-blue-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
             <div className="flex items-start gap-3">
@@ -172,8 +169,8 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ user, onClose }) => {
                 </h3>
                 <p className="text-xs text-gray-400 mt-1 leading-relaxed">
                   {activeTab === 'data' 
-                    ? "Permanently remove all chats and analysis logs. Your account remains active." 
-                    : "Permanently delete your account and all associated data. This cannot be undone."}
+                    ? "Permanently remove all chats. You will be signed out and redirected to registration." 
+                    : "Permanently delete your account and all data. This cannot be undone."}
                 </p>
               </div>
             </div>
