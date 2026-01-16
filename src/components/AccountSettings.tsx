@@ -8,7 +8,7 @@ import {
   EmailAuthProvider, User, signOut 
 } from 'firebase/auth';
 import { 
-  collection, getDocs, deleteDoc, doc, writeBatch 
+  collection, getDocs, deleteDoc, doc
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase';
 
@@ -32,20 +32,8 @@ const AccountSettings: React.FC<AccountSettingsProps> = ({ user, onClose, onRese
     onResetSession();
     
     setProgress('Scanning investigation files...');
-    const batch = writeBatch(db);
     const chatsRef = collection(db, `users/${user.uid}/chats`);
     const chatsSnapshot = await getDocs(chatsRef);
-
-    let opCount = 0;
-    const MAX_BATCH_SIZE = 450; 
-
-    const commitIfFull = async () => {
-      opCount++;
-      if (opCount >= MAX_BATCH_SIZE) {
-        await batch.commit();
-        opCount = 0;
-      }
-    };
 
     setProgress(`Found ${chatsSnapshot.size} cases. Cleaning up...`);
 
