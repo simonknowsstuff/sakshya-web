@@ -23,7 +23,7 @@ function App() {
     id: 'new-session', videoUrl: null, videoName: '', hash: null, status: 'idle', events: [], gcsUri: undefined, chatHistory: [] 
   });
   
-  const { chats, createSession, saveMessage, loadMessages, saveSpecificEvent, deleteSavedEvent, fetchSaved } = useChatHistory();
+  const { chats, createSession, saveMessage, loadMessages, saveSpecificEvent, deleteSavedEvent, fetchSaved, deleteChat } = useChatHistory();
 
   const extractHashFromUrl = (url: string | null) => {
     if (!url) return null;
@@ -167,6 +167,7 @@ function App() {
           currentChatId={currentSession.id}
           userEmail={user.email}
           onLogout={handleLogout}
+          onDeleteChat={deleteChat}
         />
       </aside>
 

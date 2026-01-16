@@ -144,5 +144,18 @@ export const useChatHistory = () => {
     await deleteDoc(docRef);
   };
 
-  return { chats, loading, createSession, saveMessage, loadMessages, saveSpecificEvent,deleteSavedEvent,fetchSaved };
+  const deleteChat = async (chatId: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    try {
+        const chatRef = doc(db, `users/${user.uid}/chats/${chatId}`);
+        await deleteDoc(chatRef);
+        console.log(`Chat ${chatId} deleted`);
+    } catch (error) {
+        console.error("Error deleting chat:", error);
+    }
+  };
+
+  return { chats, loading, createSession, saveMessage, loadMessages, saveSpecificEvent,deleteSavedEvent,fetchSaved,deleteChat };
 };
