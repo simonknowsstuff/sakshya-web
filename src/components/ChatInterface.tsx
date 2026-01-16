@@ -93,8 +93,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
       
       savedEvents.forEach(event => {
           const timeStr = new Date(event.fromTimestamp * 1000).toISOString().substr(14, 5);
-          // Convert "White SUV seen" -> "At 04:20, White SUV seen is observed."
-          // A bit robotic, but serves as a solid draft base.
           narrative += `At ${timeStr}, observations consistent with "${event.summary}" were noted. `;
       });
 
@@ -141,7 +139,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
       doc.text(`File: ${session.videoName} \nDigital Fingerprint: ${hashShort}`, margin + 5, y + 14);
       y += 30;
 
-      // 3. SUGGESTED CASE DIARY NARRATIVE (The "Copy-Paste" Section)
+      // 3. SUGGESTED CASE DIARY NARRATIVE
       doc.setFont("helvetica", "bold");
       doc.setFontSize(11);
       doc.text("SUGGESTED CASE DIARY NARRATIVE", margin, y);
@@ -163,7 +161,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
       y += 5;
 
       const findingsData = savedEvents.map(e => {
-          // Convert confidence to "Visual Clarity"
           let clarity = "Low / Obstructed";
           if (e.confidence > 0.9) clarity = "High Clarity";
           else if (e.confidence > 0.7) clarity = "Moderate Visibility";
@@ -211,26 +208,55 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
       doc.save(`Investigation_Memo_${reportData.caseId || 'Draft'}.pdf`);
       setIsReportModalOpen(false);
   };
+const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { 
+    if (e.target.files && e.target.files[0]) { 
+      const file = e.target.files[0];
+      
+      // SIZE LIMIT: 700 MB
+      // Calculation: 700 * 1024 * 1024 bytes
+      const maxSize = 700 * 1024 * 1024;
 
-  // ... (handleFileSelect, parseTimestamp, handleSubmit - KEEP SAME) ...
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files && e.target.files[0]) { setSelectedFile(e.target.files[0]); setErrorMsg(null); } };
-  const parseTimestampToSeconds = (timeStr: string | number): number => { if (typeof timeStr === 'number') return timeStr; if (!timeStr) return 0; const parts = timeStr.toString().split(':').map(Number); if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]; if (parts.length === 2) return parts[0] * 60 + parts[1]; return parts[0]; };
+      if (file.size > maxSize) {
+        setErrorMsg(" File size exceeds 700MB. Please upload a smaller video.");
+        
+        // Reset the file picker so they can try again
+        if (fileInputRef.current) fileInputRef.current.value = ''; 
+        setSelectedFile(null);
+        return;
+      }
+
+      // If valid, proceed as normal
+      setSelectedFile(file); 
+      setErrorMsg(null); 
+    } 
+  };
+ const parseTimestampToSeconds = (timeStr: string | number): number => { if (typeof timeStr === 'number') return timeStr; if (!timeStr) return 0; const parts = timeStr.toString().split(':').map(Number); if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]; if (parts.length === 2) return parts[0] * 60 + parts[1]; return parts[0]; };
   
   const handleSubmit = async (e: React.FormEvent) => {
-      // ... (Keep existing handleSubmit logic exactly the same) ...
       e.preventDefault();
       if (!prompt) return;
       if (!selectedFile && !session.gcsUri) { setErrorMsg("Please upload a video."); return; }
+      
       const userMsgId = Date.now().toString();
       const aiMsgId = (Date.now() + 1).toString();
-      const newHistory: ChatMessage[] = [ ...(session.chatHistory || []), { id: userMsgId, role: 'user', text: prompt, timestamp: Date.now() }, { id: aiMsgId, role: 'ai', text: '', timestamp: Date.now(), isLoading: true } ];
+      const newHistory: ChatMessage[] = [ 
+          ...(session.chatHistory || []), 
+          { id: userMsgId, role: 'user', text: prompt, timestamp: Date.now() }, 
+          { id: aiMsgId, role: 'ai', text: '', timestamp: Date.now(), isLoading: true } 
+      ];
+      
       setSession(prev => ({ ...prev, chatHistory: newHistory }));
-      setPrompt(''); setIsProcessing(true); setErrorMsg(null); setIsModelMenuOpen(false);
+      setPrompt(''); 
+      setIsProcessing(true); 
+      setErrorMsg(null); 
+      setIsModelMenuOpen(false);
+      
       try {
           let currentGcsUri = session.gcsUri;
           let currentDownloadUrl = session.videoUrl;
           let currentVideoName = session.videoName;
           let currentHash = session.hash;
+          
           if (selectedFile && !currentGcsUri) {
               currentHash = await generateHash(selectedFile);
               currentVideoName = selectedFile.name;
@@ -242,13 +268,41 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
               setSession(prev => ({ ...prev, videoUrl: currentDownloadUrl, videoName: currentVideoName, hash: currentHash, gcsUri: currentGcsUri }));
               setSelectedFile(null);
           }
+          
           const getTimestamps = httpsCallable(functions, 'getTimestampsFromGemini');
           const response = await getTimestamps({ storageUri: currentGcsUri, userPrompt: prompt, model: selectedModelId });
           const data = response.data as any;
+          
           if (data.timestamps) {
-              const formattedEvents = data.timestamps.map((t: any) => ({ fromTimestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from), toTimestamp: parseTimestampToSeconds(t.end || t.to), summary: t.description || t.summary || "Event Detected", confidence: t.confidence || 0.9 }));
-              setSession(prev => ({ ...prev, chatHistory: prev.chatHistory?.map(msg => msg.id === aiMsgId ? { ...msg, isLoading: false, text: data.description || `Found ${formattedEvents.length} relevant events.`, analysisData: { events: formattedEvents, summary: data.description, confidence: 0.9 } } : msg ) }));
-              if (onSaveSession && currentDownloadUrl) { onSaveSession(prompt, formattedEvents, currentDownloadUrl, selectedModelId, currentVideoName, currentHash || ""); }
+              const formattedEvents = data.timestamps.map((t: any) => ({ 
+                  fromTimestamp: parseTimestampToSeconds(t.start || t.timestamp || t.from), 
+                  toTimestamp: parseTimestampToSeconds(t.end || t.to), 
+                  summary: t.description || t.summary || "Event Detected", 
+                  confidence: t.confidence || 0.95 
+              }));
+
+              // FIX: Calculate Average Confidence from actual events
+              const avgConfidence = formattedEvents.length > 0
+                  ? formattedEvents.reduce((sum: number, e: any) => sum + (e.confidence || 0), 0) / formattedEvents.length
+                  : 1.0;
+
+              setSession(prev => ({ 
+                  ...prev, 
+                  chatHistory: prev.chatHistory?.map(msg => msg.id === aiMsgId ? { 
+                      ...msg, 
+                      isLoading: false, 
+                      text: data.description || `Found ${formattedEvents.length} relevant events.`, 
+                      analysisData: { 
+                          events: formattedEvents, 
+                          summary: data.description, 
+                          confidence: avgConfidence // Using Real Confidence
+                      } 
+                  } : msg ) 
+              }));
+              
+              if (onSaveSession && currentDownloadUrl) { 
+                  onSaveSession(prompt, formattedEvents, currentDownloadUrl, selectedModelId, currentVideoName, currentHash || ""); 
+              }
           }
       } catch (err: any) {
           console.error(err);
@@ -372,7 +426,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
           </div>
       )}
 
-      {/* 3. EXISTING CHAT HISTORY AREA (Keep Same) */}
+      {/* 3. EXISTING CHAT HISTORY AREA */}
       <div className="flex-1 overflow-y-auto py-6 space-y-6 min-h-0 custom-scrollbar" ref={scrollRef}>
         {history.length === 0 && (<div className="flex flex-col items-center justify-center h-full space-y-6 opacity-60"><div className="w-20 h-20 rounded-3xl bg-blue-500/10 flex items-center justify-center"><div className="w-10 h-10 rounded-full bg-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.4)]" /></div><div className="text-center"><h2 className="text-2xl font-bold text-gray-200">Sakshya AI</h2><p className="text-gray-500 mt-2">Upload footage. Start the investigation.</p></div></div>)}
         {history.map((msg, index) => (
@@ -386,11 +440,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ session, setSession, onSa
         ))}
       </div>
 
-      {/* 4. INPUT AREA (Keep Same) */}
+      {/* 4. INPUT AREA */}
       <div className="pb-6 pt-4 bg-[#131314]">
         {errorMsg && (<div className="mb-3 flex items-center gap-2 text-sm text-red-400 bg-red-500/10 p-3 rounded-lg border border-red-500/20 animate-fade-in"><AlertCircle className="w-4 h-4" />{errorMsg}</div>)}
         <form onSubmit={handleSubmit} className="relative bg-[#1e1f20] rounded-2xl border border-gray-700 focus-within:border-gray-600 transition-colors shadow-2xl">
-          {hasActiveVideo && !selectedFile && (<div className="absolute -top-10 left-0 flex items-center gap-2 bg-[#1e1f20] border border-green-500/30 text-xs text-green-400 px-3 py-1.5 rounded-full shadow-sm max-w-[90vw]"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shrink-0" /><div className="flex items-center gap-2 min-w-0"><span className="text-gray-300 truncate font-medium max-w-[150px]" title={session.videoName}>{session.videoName}</span>{session.hash && (<span className="text-gray-500 font-mono border-l border-gray-700 pl-2 truncate cursor-help" title={`SHA-256: ${session.hash}`}>{session.hash.substring(0, 12)}...</span>)}</div></div>)}
+          
+          {/* FIX: Check !errorMsg to prevent overlapping */}
+          {hasActiveVideo && !selectedFile && !errorMsg && (<div className="absolute -top-10 left-0 flex items-center gap-2 bg-[#1e1f20] border border-green-500/30 text-xs text-green-400 px-3 py-1.5 rounded-full shadow-sm max-w-[90vw]"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse shrink-0" /><div className="flex items-center gap-2 min-w-0"><span className="text-gray-300 truncate font-medium max-w-[150px]" title={session.videoName}>{session.videoName}</span>{session.hash && (<span className="text-gray-500 font-mono border-l border-gray-700 pl-2 truncate cursor-help" title={`SHA-256: ${session.hash}`}>{session.hash.substring(0, 12)}...</span>)}</div></div>)}
+          
           {selectedFile && (<div className="absolute -top-12 left-0 flex items-center gap-2 bg-[#282a2c] text-sm text-gray-200 px-3 py-2 rounded-lg border border-gray-700 shadow-sm animate-fade-in"><FileVideo className="w-4 h-4 text-blue-400" /><span className="truncate max-w-[200px]">{selectedFile.name}</span><button type="button" onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} className="hover:text-red-400 ml-1"><X className="w-4 h-4" /></button></div>)}
           <div className="flex flex-col p-4">
             <textarea value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={hasActiveVideo ? "Ask another question about this footage..." : "Describe the event (e.g., 'A white SUV arriving')..."} className="w-full bg-transparent text-gray-100 placeholder-gray-500 resize-none focus:outline-none h-12 min-h-[3rem] max-h-32" onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSubmit(e); } }} />
